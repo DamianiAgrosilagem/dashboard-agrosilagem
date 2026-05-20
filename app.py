@@ -392,14 +392,15 @@ def import_conta_azul(uploaded_file, merge=True):
     out = out.merge(vl, on='num_venda', how='left')
 
     if merge and VENDAS_FILE.exists():
-        existing = pd.read_csv(VENDAS_FILE, compression='gzip', parse_dates=['data_venda'])
-        existing['is_silagem'] = existing['is_silagem'].astype(bool)
-        existing = existing[~existing['num_venda'].isin(out['num_venda'].unique())]
-        out = pd.concat([existing, out], ignore_index=True)
-        out = out.sort_values('data_venda').reset_index(drop=True)
+        try:
+            existing = pd.read_csv(VENDAS_FILE, compression='gzip', parse_dates=['data_venda'])
+            existing['is_silagem'] = existing['is_silagem'].astype(bool)
+            existing = existing[~existing['num_venda'].isin(out['num_venda'].unique())]
+            out = pd.concat([existing, out], ignore_index=True)
+            out = out.sort_values('data_venda').reset_index(drop=True)
+        except Exception:
+            pass  # se não conseguir ler o arquivo existente, usa apenas os novos dados
 
-    DATA_DIR.mkdir(exist_ok=True)
-    out.to_csv(VENDAS_FILE, index=False, compression='gzip')
     return out, None
 
 
@@ -439,7 +440,10 @@ SAFRA_ORDER = [
 # ═══════════════════════════════════════════════════════════════════
 # CARGA DE DADOS
 # ═══════════════════════════════════════════════════════════════════
-df_raw = build_dataset()
+if 'df_override' in st.session_state:
+    df_raw = st.session_state['df_override']
+else:
+    df_raw = build_dataset()
 df_raw['ano_mes'] = df_raw['data_venda'].dt.to_period('M').astype(str)
 df_raw['ano'] = df_raw['data_venda'].dt.year
 df_raw['mes'] = df_raw['data_venda'].dt.month
@@ -499,24 +503,26 @@ with st.sidebar:
             else:
                 min_d = df_imp['data_venda'].min().strftime('%d/%m/%Y')
                 max_d = df_imp['data_venda'].max().strftime('%d/%m/%Y')
-                st.success(f"✅ {len(df_imp):,} registros no total")
+                st.success(f"✅ {len(df_imp):,} registros importados")
                 st.caption(f"Período: {min_d} → {max_d}")
 
-                # Gera bytes do CSV.gz para download permanente
+                # Salva na sessão — carregado automaticamente no próximo rerun
+                st.session_state['df_override'] = df_imp
+
+                # Download para atualização permanente via git
                 buf = io.BytesIO()
                 df_imp.to_csv(buf, index=False, compression='gzip')
                 st.download_button(
-                    "⬇️ Baixar base atualizada",
+                    "⬇️ Baixar base atualizada (permanente)",
                     data=buf.getvalue(),
                     file_name="vendas.csv.gz",
                     mime="application/gzip",
-                    help="Salve este arquivo em data/vendas.csv.gz e faça git push para tornar os dados permanentes.",
                     key="btn_download_csv"
                 )
-                st.caption("💡 Para atualização permanente: baixe o arquivo → substitua data/vendas.csv.gz → git push origin main")
+                st.caption("💡 Para tornar permanente: baixe → substitua data/vendas.csv.gz → git push")
 
-                if st.button("🔄 Recarregar Dashboard", key="btn_reload_imp"):
-                    st.cache_data.clear(); st.rerun()
+                if st.button("🔄 Aplicar no Dashboard", key="btn_reload_imp"):
+                    st.rerun()
 
 # ─── Modo Escuro ─────────────────────────────────────────────────
 if modo_escuro:
