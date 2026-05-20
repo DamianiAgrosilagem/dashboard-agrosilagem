@@ -317,18 +317,18 @@ def import_conta_azul(uploaded_file, merge=True):
     df.columns = [str(c).strip().lower() for c in df.columns]
 
     MAPS = {
-        'num_venda':    ['número','numero','num','nf','nota fiscal','pedido','venda',
-                         'número da venda','num. venda','cod. venda','código','codigo'],
-        'data_venda':   ['data','emissão','emissao','data de emissão','data emissão',
-                         'data emissao','data venda','data da venda'],
+        'num_venda':    ['número da venda','número','numero','num','nf','nota fiscal',
+                         'pedido','venda','num. venda','cod. venda','código','codigo'],
+        'data_venda':   ['data da venda','data','emissão','emissao','data de emissão',
+                         'data emissão','data emissao','data venda'],
         'cliente':      ['cliente','nome','razão social','razao social','nome do cliente',
                          'comprador','destinatário','destinatario'],
-        'cidade':       ['cidade','município','municipio','local','localidade'],
-        'produto':      ['produto','serviço','servico','descrição','descricao','item',
-                         'produto/serviço','discriminação','discriminacao'],
-        'safra_raw':    ['safra','observação','observacao','obs','referência','referencia',
-                         'complemento','informação adicional'],
-        'quantidade':   ['quantidade','qtd','qtd.','qtde','qtde.'],
+        'cidade':       ['cidade do cliente','cidade','município','municipio','local','localidade'],
+        'produto':      ['nome do produto/serviço','produto/serviço','produto','serviço',
+                         'servico','descrição','descricao','item','discriminação','discriminacao'],
+        'safra_raw':    ['detalhes do item','safra','observação','observacao','obs',
+                         'referência','referencia','complemento','informação adicional'],
+        'quantidade':   ['quantidade de itens','quantidade','qtd','qtd.','qtde','qtde.'],
         'valor_bruto':  ['valor bruto','v. bruto','total','valor total','valor',
                          'preço total','preco total','total bruto'],
         'valor_liquido':['valor líquido','valor liquido','v. líquido','v. liquido',
@@ -342,22 +342,27 @@ def import_conta_azul(uploaded_file, merge=True):
                 col_map[target] = cand
                 break
 
-    required = ['num_venda', 'data_venda', 'cliente', 'produto', 'valor_bruto']
+    # valor_bruto é opcional — usa valor_liquido como fallback
+    required = ['num_venda', 'data_venda', 'cliente', 'produto']
+    if 'valor_bruto' not in col_map and 'valor_liquido' not in col_map:
+        required.append('valor_bruto')  # força erro descritivo
+
     missing = [r for r in required if r not in col_map]
     if missing:
         avail = ', '.join(df.columns.tolist())
         return None, (f"Colunas obrigatórias não encontradas: {missing}.\n"
-                      f"Colunas no arquivo: {avail}\n\n"
-                      f"Renomeie as colunas no Excel para os nomes esperados e tente novamente.")
+                      f"Colunas no arquivo: {avail}")
 
     out = pd.DataFrame()
     for target, src in col_map.items():
         out[target] = df[src]
 
-    if 'safra_raw'    not in out.columns: out['safra_raw']    = out['produto']
-    if 'cidade'       not in out.columns: out['cidade']       = ''
+    if 'safra_raw'     not in out.columns: out['safra_raw']     = out['produto']
+    if 'cidade'        not in out.columns: out['cidade']        = ''
+    if 'quantidade'    not in out.columns: out['quantidade']    = '1'
+    # Se não há valor_bruto, usa valor_liquido no lugar
+    if 'valor_bruto'   not in out.columns: out['valor_bruto']   = out['valor_liquido']
     if 'valor_liquido' not in out.columns: out['valor_liquido'] = out['valor_bruto']
-    if 'quantidade'   not in out.columns: out['quantidade']   = '1'
 
     out['num_venda']    = pd.to_numeric(out['num_venda'].astype(str).str.replace(r'\D','',regex=True), errors='coerce').fillna(0).astype(int)
     out['data_venda']   = pd.to_datetime(out['data_venda'], dayfirst=True, errors='coerce')
