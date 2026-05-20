@@ -256,10 +256,11 @@ def build_dataset():
         df['is_silagem'] = df['is_silagem'].astype(bool)
         df['hectares']   = df['hectares'].fillna(0)
         return df
+    st.error("Base de dados não encontrada. Use o painel **📤 Importar do Conta Azul** na sidebar para carregar os dados.")
+    st.stop()
     pdf1 = PDF_DIR / "Relatório de Vendas por Safra.pdf"
     pdf2 = PDF_DIR / "RESUMO DE VENDAS.pdf"
     if not pdf1.exists() or not pdf2.exists():
-        st.error("PDFs não encontrados. Coloque-os em: " + str(PDF_DIR))
         st.stop()
     with st.spinner("Extraindo dados dos PDFs..."):
         rows1 = extract_pdf1(str(pdf1))
@@ -473,7 +474,7 @@ with st.sidebar:
     modo_escuro = st.toggle("🌙 Modo Escuro", value=False)
     st.markdown("---")
     if st.button("🔄 Atualizar Dados"):
-        if VENDAS_FILE.exists(): VENDAS_FILE.unlink()
+        st.session_state.pop('df_override', None)
         st.cache_data.clear(); st.rerun()
 
     st.markdown("---")
