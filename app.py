@@ -9,9 +9,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pdfplumber
 import re
-import os
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime
 
 # ─── Configuração da página ──────────────────────────────────────────────────
 st.set_page_config(
@@ -37,7 +36,7 @@ PALETTE = [
     "#37474F", "#558B2F", "#0277BD", "#D84315",
 ]
 
-# ─── CSS customizado ──────────────────────────────────────────────────────────
+# ─── CSS customizado + responsivo mobile ─────────────────────────────────────
 st.markdown("""
 <style>
     /* Sidebar */
@@ -61,18 +60,10 @@ st.markdown("""
     .kpi-card .kpi-label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1px; opacity: 0.85; }
     .kpi-card .kpi-delta { font-size: 0.82rem; margin-top: 4px; opacity: 0.9; }
 
-    .kpi-card.azul {
-        background: linear-gradient(135deg, #1565C0, #0D47A1);
-    }
-    .kpi-card.laranja {
-        background: linear-gradient(135deg, #E65100, #BF360C);
-    }
-    .kpi-card.roxo {
-        background: linear-gradient(135deg, #6A1B9A, #4A148C);
-    }
-    .kpi-card.teal {
-        background: linear-gradient(135deg, #00838F, #006064);
-    }
+    .kpi-card.azul   { background: linear-gradient(135deg, #1565C0, #0D47A1); }
+    .kpi-card.laranja{ background: linear-gradient(135deg, #E65100, #BF360C); }
+    .kpi-card.roxo   { background: linear-gradient(135deg, #6A1B9A, #4A148C); }
+    .kpi-card.teal   { background: linear-gradient(135deg, #00838F, #006064); }
 
     /* Section titles */
     .section-title {
@@ -102,15 +93,34 @@ st.markdown("""
     .main-header p  { margin: 2px 0; font-size: 0.82rem; opacity: 0.85; }
 
     /* Tabs */
-    .stTabs [data-baseweb="tab"] {
-        font-weight: 600; color: #2E7D32;
-    }
+    .stTabs [data-baseweb="tab"] { font-weight: 600; color: #2E7D32; }
 
     /* Scrollable table */
     .dataframe-container { overflow-x: auto; }
 
     /* Remove default margins */
     .block-container { padding-top: 1rem; }
+
+    /* ── RESPONSIVO MOBILE ── */
+    @media (max-width: 768px) {
+        /* Empilhar colunas */
+        [data-testid="column"] {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
+        /* KPI menor */
+        .kpi-card .kpi-value { font-size: 1.3rem; }
+        .kpi-card { padding: 14px 12px; }
+        /* Header compacto */
+        .main-header h1 { font-size: 1.1rem; }
+        .main-header p  { font-size: 0.72rem; }
+        /* Tabs scroll horizontal */
+        .stTabs [data-testid="stHorizontalBlock"] { overflow-x: auto; }
+        /* Padding menor */
+        .block-container { padding: 0.5rem 0.5rem 2rem !important; }
+        /* Sidebar fecha por padrão no mobile — já é padrão do Streamlit */
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -326,6 +336,23 @@ def kpi(label, value, cls="", delta=""):
 </div>
 """
 
+def layout_mobile(fig, height=380, margin_b=60, font_size=13):
+    """Aplica configurações de legibilidade mobile em qualquer figura Plotly."""
+    fig.update_layout(
+        height=height,
+        margin=dict(l=8, r=8, t=36, b=margin_b),
+        font=dict(size=font_size, family="Arial, sans-serif"),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        legend=dict(
+            orientation="h", y=-0.22, x=0,
+            font=dict(size=11),
+        ),
+    )
+    fig.update_xaxes(tickfont=dict(size=11), title_font=dict(size=12))
+    fig.update_yaxes(tickfont=dict(size=11), title_font=dict(size=12))
+    return fig
+
 
 # ═══════════════════════════════════════════════════════════════════
 # CARREGAMENTO DOS DADOS
@@ -350,9 +377,11 @@ with st.sidebar:
     max_date = df_raw['data_venda'].max().date()
     col_d1, col_d2 = st.columns(2)
     with col_d1:
-        dt_inicio = st.date_input("De", value=min_date, min_value=min_date, max_value=max_date)
+        dt_inicio = st.date_input("De", value=min_date, min_value=min_date, max_value=max_date,
+                                  format="DD/MM/YYYY")
     with col_d2:
-        dt_fim    = st.date_input("Até", value=max_date, min_value=min_date, max_value=max_date)
+        dt_fim    = st.date_input("Até", value=max_date, min_value=min_date, max_value=max_date,
+                                  format="DD/MM/YYYY")
 
     # Safra
     safras_disp = sorted(df_raw['safra'].dropna().unique())
@@ -376,10 +405,10 @@ with st.sidebar:
 
     # Faixa de hectares
     max_ha = int(df_raw[df_raw['is_silagem']]['quantidade'].max())
-    ha_range = st.slider("Hectares (por linha)", 0, max_ha, (0, max_ha))
+    ha_range = st.slider("Faixa de Hectares", 0, max_ha, (0, max_ha))
 
     st.markdown("---")
-    if st.button("🔄 Reprocessar PDFs"):
+    if st.button("🔄 Atualizar Dados"):
         if VENDAS_FILE.exists():
             VENDAS_FILE.unlink()
         st.cache_data.clear()
@@ -448,7 +477,7 @@ st.markdown("""
 
 # Período exibido
 periodo_str = f"{dt_inicio.strftime('%d/%m/%Y')} — {dt_fim.strftime('%d/%m/%Y')}"
-registros_str = f"{len(df):,} registros | {num_vendas:,} vendas"
+registros_str = f"{len(df):,} registros | {num_vendas:,} vendas realizadas"
 st.caption(f"📅 Período: **{periodo_str}** &nbsp;|&nbsp; {registros_str}")
 
 
@@ -509,12 +538,9 @@ with tab_visao:
             text=cat_df['valor_bruto'].apply(lambda v: fmt_brl(v)),
         )
         fig_cat.update_traces(textposition='outside', textfont_size=11)
-        fig_cat.update_layout(
-            showlegend=False, plot_bgcolor='white',
-            xaxis_title="", yaxis_title="",
-            xaxis=dict(showticklabels=False, showgrid=False),
-            margin=dict(l=10, r=20, t=10, b=10), height=320,
-        )
+        layout_mobile(fig_cat, height=340, margin_b=10)
+        fig_cat.update_layout(showlegend=False,
+            xaxis=dict(showticklabels=False, showgrid=False), xaxis_title="", yaxis_title="")
         st.plotly_chart(fig_cat, use_container_width=True)
 
     with col_r:
@@ -524,13 +550,11 @@ with tab_visao:
             color_discrete_sequence=PALETTE, hole=0.45,
         )
         fig_pie.update_traces(
-            textposition='outside', textinfo='label+percent',
-            textfont_size=11,
+            textposition='inside', textinfo='label+percent',
+            textfont_size=12, insidetextorientation='radial',
         )
-        fig_pie.update_layout(
-            showlegend=False,
-            margin=dict(l=10, r=10, t=10, b=10), height=320,
-        )
+        layout_mobile(fig_pie, height=340, margin_b=10)
+        fig_pie.update_layout(showlegend=False)
         st.plotly_chart(fig_pie, use_container_width=True)
 
     # Faturamento bruto vs líquido por categoria
@@ -544,19 +568,15 @@ with tab_visao:
     fig_bvsl.add_trace(go.Bar(
         x=bvsl['categoria'], y=bvsl['bruto'],
         name='Bruto', marker_color=VERDE_CLARO,
-        text=bvsl['bruto'].apply(fmt_brl), textposition='outside', textfont_size=9,
+        text=bvsl['bruto'].apply(fmt_brl), textposition='outside', textfont_size=11,
     ))
     fig_bvsl.add_trace(go.Bar(
         x=bvsl['categoria'], y=bvsl['liquido'],
         name='Líquido', marker_color=AZUL,
-        text=bvsl['liquido'].apply(fmt_brl), textposition='outside', textfont_size=9,
+        text=bvsl['liquido'].apply(fmt_brl), textposition='outside', textfont_size=11,
     ))
-    fig_bvsl.update_layout(
-        barmode='group', plot_bgcolor='white',
-        xaxis_title="", yaxis_title="R$",
-        legend=dict(orientation='h', y=1.08),
-        margin=dict(l=10, r=10, t=30, b=10), height=340,
-    )
+    layout_mobile(fig_bvsl, height=360, margin_b=60)
+    fig_bvsl.update_layout(barmode='group', xaxis_title="", yaxis_title="R$")
     st.plotly_chart(fig_bvsl, use_container_width=True)
 
 
@@ -593,15 +613,10 @@ with tab_clientes:
             color_continuous_scale=['#A5D6A7', '#1B5E20'],
             text=top_cli.sort_values('faturamento')['faturamento'].apply(fmt_brl),
         )
-        fig_cli.update_traces(textposition='outside', textfont_size=9)
-        fig_cli.update_layout(
-            showlegend=False, plot_bgcolor='white',
-            xaxis=dict(showticklabels=False, showgrid=False),
-            yaxis_title="", xaxis_title="",
-            coloraxis_showscale=False,
-            margin=dict(l=10, r=10, t=10, b=10),
-            height=max(340, n_top * 22),
-        )
+        fig_cli.update_traces(textposition='outside', textfont_size=11)
+        layout_mobile(fig_cli, height=max(380, n_top * 24), margin_b=10)
+        fig_cli.update_layout(showlegend=False, coloraxis_showscale=False,
+            xaxis=dict(showticklabels=False, showgrid=False), yaxis_title="", xaxis_title="")
         st.plotly_chart(fig_cli, use_container_width=True)
 
     with col_r:
@@ -613,14 +628,10 @@ with tab_clientes:
             color_continuous_scale=['#B3E5FC', '#01579B'],
             text=tm_df['ticket_medio_ha'].apply(lambda v: fmt_brl(v)),
         )
-        fig_tm.update_traces(textposition='outside', textfont_size=9)
-        fig_tm.update_layout(
-            showlegend=False, plot_bgcolor='white',
-            xaxis=dict(showticklabels=False, showgrid=False),
-            coloraxis_showscale=False,
-            yaxis_title="", xaxis_title="",
-            margin=dict(l=10, r=10, t=10, b=10), height=380,
-        )
+        fig_tm.update_traces(textposition='outside', textfont_size=11)
+        layout_mobile(fig_tm, height=400, margin_b=10)
+        fig_tm.update_layout(showlegend=False, coloraxis_showscale=False,
+            xaxis=dict(showticklabels=False, showgrid=False), yaxis_title="", xaxis_title="")
         st.plotly_chart(fig_tm, use_container_width=True)
 
     # Tabela resumo de clientes
@@ -652,11 +663,9 @@ with tab_clientes:
         size_max=60, labels={'hectares': 'Hectares', 'faturamento': 'Faturamento (R$)'},
         text='cliente',
     )
-    fig_bubble.update_traces(textposition='top center', textfont_size=8)
-    fig_bubble.update_layout(
-        plot_bgcolor='white', coloraxis_colorbar_title="Ticket/ha",
-        margin=dict(l=10, r=10, t=10, b=10), height=460,
-    )
+    fig_bubble.update_traces(textposition='top center', textfont_size=10)
+    layout_mobile(fig_bubble, height=460, margin_b=60)
+    fig_bubble.update_layout(coloraxis_colorbar_title="Ticket/ha")
     st.plotly_chart(fig_bubble, use_container_width=True)
 
 
@@ -684,17 +693,14 @@ with tab_produtos:
             color_continuous_scale=['#C8E6C9', '#1B5E20'],
             text=top15['faturamento'].apply(fmt_brl),
         )
-        fig_prod.update_traces(textposition='outside', textfont_size=9)
-        fig_prod.update_layout(
-            showlegend=False, plot_bgcolor='white', coloraxis_showscale=False,
-            xaxis=dict(showticklabels=False, showgrid=False),
-            yaxis_title="", xaxis_title="",
-            margin=dict(l=10, r=10, t=10, b=10), height=420,
-        )
+        fig_prod.update_traces(textposition='outside', textfont_size=11)
+        layout_mobile(fig_prod, height=440, margin_b=10)
+        fig_prod.update_layout(showlegend=False, coloraxis_showscale=False,
+            xaxis=dict(showticklabels=False, showgrid=False), yaxis_title="", xaxis_title="")
         st.plotly_chart(fig_prod, use_container_width=True)
 
     with col_r:
-        st.markdown('<div class="section-title">Top 15 Produtos por Volume (quantidade)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Top 15 Produtos por Volume</div>', unsafe_allow_html=True)
         top15q = prod_df.sort_values('quantidade', ascending=False).head(15).sort_values('quantidade')
         fig_prodq = px.bar(
             top15q, x='quantidade', y='produto',
@@ -702,13 +708,10 @@ with tab_produtos:
             color_continuous_scale=['#B3E5FC', '#01579B'],
             text=top15q['quantidade'].apply(lambda v: fmt_num(v, 1)),
         )
-        fig_prodq.update_traces(textposition='outside', textfont_size=9)
-        fig_prodq.update_layout(
-            showlegend=False, plot_bgcolor='white', coloraxis_showscale=False,
-            xaxis=dict(showticklabels=False, showgrid=False),
-            yaxis_title="", xaxis_title="",
-            margin=dict(l=10, r=10, t=10, b=10), height=420,
-        )
+        fig_prodq.update_traces(textposition='outside', textfont_size=11)
+        layout_mobile(fig_prodq, height=440, margin_b=10)
+        fig_prodq.update_layout(showlegend=False, coloraxis_showscale=False,
+            xaxis=dict(showticklabels=False, showgrid=False), yaxis_title="", xaxis_title="")
         st.plotly_chart(fig_prodq, use_container_width=True)
 
     # Silagem detail
@@ -738,11 +741,9 @@ with tab_produtos:
                textposition='outside', name='R$/ha'),
         row=1, col=2
     )
-    fig_sil.update_layout(
-        showlegend=False, plot_bgcolor='white',
-        margin=dict(l=10, r=10, t=40, b=80), height=380,
-    )
-    fig_sil.update_xaxes(tickangle=30)
+    layout_mobile(fig_sil, height=420, margin_b=100)
+    fig_sil.update_layout(showlegend=False)
+    fig_sil.update_xaxes(tickangle=35, tickfont=dict(size=10))
     st.plotly_chart(fig_sil, use_container_width=True)
 
 
@@ -771,13 +772,10 @@ with tab_geo:
             color_continuous_scale=['#A5D6A7', '#1B5E20'],
             text=top_cid['faturamento'].apply(fmt_brl),
         )
-        fig_cid.update_traces(textposition='outside', textfont_size=9)
-        fig_cid.update_layout(
-            showlegend=False, plot_bgcolor='white', coloraxis_showscale=False,
-            xaxis=dict(showticklabels=False, showgrid=False),
-            yaxis_title="", xaxis_title="",
-            margin=dict(l=10, r=10, t=10, b=10), height=max(340, n_cid * 22),
-        )
+        fig_cid.update_traces(textposition='outside', textfont_size=11)
+        layout_mobile(fig_cid, height=max(380, n_cid * 24), margin_b=10)
+        fig_cid.update_layout(showlegend=False, coloraxis_showscale=False,
+            xaxis=dict(showticklabels=False, showgrid=False), yaxis_title="", xaxis_title="")
         st.plotly_chart(fig_cid, use_container_width=True)
 
     with col_r:
@@ -789,13 +787,10 @@ with tab_geo:
             color_continuous_scale=['#B3E5FC', '#01579B'],
             text=top_cid_c['clientes'],
         )
-        fig_cid_c.update_traces(textposition='outside', textfont_size=9)
-        fig_cid_c.update_layout(
-            showlegend=False, plot_bgcolor='white', coloraxis_showscale=False,
-            xaxis=dict(showticklabels=False, showgrid=False),
-            yaxis_title="", xaxis_title="",
-            margin=dict(l=10, r=10, t=10, b=10), height=480,
-        )
+        fig_cid_c.update_traces(textposition='outside', textfont_size=11)
+        layout_mobile(fig_cid_c, height=500, margin_b=10)
+        fig_cid_c.update_layout(showlegend=False, coloraxis_showscale=False,
+            xaxis=dict(showticklabels=False, showgrid=False), yaxis_title="", xaxis_title="")
         st.plotly_chart(fig_cid_c, use_container_width=True)
 
     # Tabela cidades
@@ -838,21 +833,15 @@ with tab_temporal:
     fig_mensal.add_trace(go.Bar(
         x=mensal['ano_mes'], y=mensal['faturamento'],
         name='Faturamento Bruto', marker_color=VERDE_CLARO, opacity=0.85,
-        text=mensal['faturamento'].apply(lambda v: fmt_brl(v)),
-        textposition='outside', textfont_size=8,
     ))
     fig_mensal.add_trace(go.Scatter(
         x=mensal['ano_mes'], y=mensal['liquido'],
-        name='Receita Líquida', line=dict(color=AZUL, width=2),
-        mode='lines+markers',
+        name='Receita Líquida', line=dict(color=AZUL, width=3),
+        mode='lines+markers', marker=dict(size=7),
     ))
-    fig_mensal.update_layout(
-        plot_bgcolor='white', barmode='overlay',
-        xaxis_title="Mês/Ano", yaxis_title="R$",
-        legend=dict(orientation='h', y=1.08),
-        xaxis=dict(tickangle=45),
-        margin=dict(l=10, r=10, t=40, b=80), height=400,
-    )
+    layout_mobile(fig_mensal, height=420, margin_b=80)
+    fig_mensal.update_layout(barmode='overlay', xaxis_title="Mês/Ano", yaxis_title="R$")
+    fig_mensal.update_xaxes(tickangle=45, tickfont=dict(size=10))
     st.plotly_chart(fig_mensal, use_container_width=True)
 
     col_l, col_r = st.columns(2)
@@ -863,11 +852,8 @@ with tab_temporal:
             color_discrete_sequence=[VERDE_ESCURO],
             labels={'hectares': 'Hectares', 'ano_mes': ''},
         )
-        fig_ha_m.update_layout(
-            plot_bgcolor='white', height=300,
-            xaxis=dict(tickangle=45),
-            margin=dict(l=10, r=10, t=10, b=60),
-        )
+        layout_mobile(fig_ha_m, height=320, margin_b=70)
+        fig_ha_m.update_xaxes(tickangle=45, tickfont=dict(size=10))
         st.plotly_chart(fig_ha_m, use_container_width=True)
 
     with col_r:
@@ -875,13 +861,10 @@ with tab_temporal:
         fig_cli_m = px.line(
             mensal, x='ano_mes', y='clientes',
             color_discrete_sequence=[LARANJA], markers=True,
-            labels={'clientes': 'Clientes', 'ano_mes': ''},
+            labels={'clientes': 'Clientes Ativos', 'ano_mes': ''},
         )
-        fig_cli_m.update_layout(
-            plot_bgcolor='white', height=300,
-            xaxis=dict(tickangle=45),
-            margin=dict(l=10, r=10, t=10, b=60),
-        )
+        layout_mobile(fig_cli_m, height=320, margin_b=70)
+        fig_cli_m.update_xaxes(tickangle=45, tickfont=dict(size=10))
         st.plotly_chart(fig_cli_m, use_container_width=True)
 
 
@@ -922,13 +905,10 @@ with tab_safras:
             color='safra', color_discrete_sequence=PALETTE,
             text=safra_df['hectares'].apply(lambda v: fmt_num(v, 1)),
         )
-        fig_sha.update_traces(textposition='outside')
-        fig_sha.update_layout(
-            showlegend=False, plot_bgcolor='white',
-            xaxis_title="", yaxis_title="Hectares",
-            xaxis=dict(tickangle=35),
-            margin=dict(l=10, r=10, t=10, b=100), height=380,
-        )
+        fig_sha.update_traces(textposition='outside', textfont_size=11)
+        layout_mobile(fig_sha, height=420, margin_b=110)
+        fig_sha.update_layout(showlegend=False, xaxis_title="", yaxis_title="Hectares")
+        fig_sha.update_xaxes(tickangle=35, tickfont=dict(size=10))
         st.plotly_chart(fig_sha, use_container_width=True)
 
     with col_r:
@@ -938,13 +918,10 @@ with tab_safras:
             color='safra', color_discrete_sequence=PALETTE,
             text=safra_df['receita_ha'].apply(fmt_brl),
         )
-        fig_sha_r.update_traces(textposition='outside')
-        fig_sha_r.update_layout(
-            showlegend=False, plot_bgcolor='white',
-            xaxis_title="", yaxis_title="R$/ha",
-            xaxis=dict(tickangle=35),
-            margin=dict(l=10, r=10, t=10, b=100), height=380,
-        )
+        fig_sha_r.update_traces(textposition='outside', textfont_size=11)
+        layout_mobile(fig_sha_r, height=420, margin_b=110)
+        fig_sha_r.update_layout(showlegend=False, xaxis_title="", yaxis_title="R$/ha")
+        fig_sha_r.update_xaxes(tickangle=35, tickfont=dict(size=10))
         st.plotly_chart(fig_sha_r, use_container_width=True)
 
     st.markdown('<div class="section-title">Resumo por Safra</div>', unsafe_allow_html=True)
@@ -977,12 +954,10 @@ with tab_safras:
             color='faturamento', color_continuous_scale='Greens',
             text=saf_cli.sort_values('hectares')['hectares'].apply(lambda v: fmt_num(v, 1)),
         )
-        fig_saf_cli.update_traces(textposition='outside')
-        fig_saf_cli.update_layout(
-            plot_bgcolor='white', coloraxis_colorbar_title="Faturamento",
-            xaxis_title="Hectares", yaxis_title="",
-            margin=dict(l=10, r=10, t=10, b=10), height=420,
-        )
+        fig_saf_cli.update_traces(textposition='outside', textfont_size=11)
+        layout_mobile(fig_saf_cli, height=440, margin_b=10)
+        fig_saf_cli.update_layout(coloraxis_colorbar_title="Faturamento",
+            xaxis_title="Hectares", yaxis_title="")
         st.plotly_chart(fig_saf_cli, use_container_width=True)
 
 
@@ -1027,7 +1002,7 @@ with tab_dados:
         'Produto', 'Safra', 'Qtd', 'Hectares', 'Valor Bruto', 'Valor Líquido'
     ]
 
-    st.caption(f"Exibindo {len(show_df_fmt):,} de {len(df):,} registros")
+    st.caption(f"Exibindo {len(show_df_fmt):,} de {len(df):,} registros filtrados")
     st.dataframe(show_df_fmt, use_container_width=True, hide_index=True, height=500)
 
 
@@ -1163,6 +1138,6 @@ with tab_insights:
     # Footer
     st.markdown("---")
     st.caption(
-        f"Dashboard gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')} | "
-        f"Dados: {len(df_raw):,} registros | Agrosilagem © 2024–2026"
+        f"Atualizado em {datetime.now().strftime('%d/%m/%Y às %H:%M')} | "
+        f"Base de dados: {len(df_raw):,} registros | Agrosilagem © 2024–2026"
     )
