@@ -294,6 +294,111 @@ def build_dataset():
 
 
 # ═══════════════════════════════════════════════════════════════════
+# IMPORTAÇÃO DE ARQUIVO (Excel / CSV do Conta Azul)
+# ═══════════════════════════════════════════════════════════════════
+def import_conta_azul(uploaded_file, merge=True):
+    """Processa arquivo Excel/CSV exportado do Conta Azul. Retorna (df_final, erro)."""
+    try:
+        name = uploaded_file.name.lower()
+        if name.endswith(('.xlsx', '.xls')):
+            df = pd.read_excel(uploaded_file, dtype=str)
+        else:
+            try:
+                df = pd.read_csv(uploaded_file, encoding='utf-8-sig', sep=None, engine='python', dtype=str)
+            except Exception:
+                uploaded_file.seek(0)
+                df = pd.read_csv(uploaded_file, encoding='latin-1', sep=None, engine='python', dtype=str)
+    except Exception as e:
+        return None, f"Erro ao ler arquivo: {e}"
+
+    if df.empty:
+        return None, "Arquivo vazio."
+
+    df.columns = [str(c).strip().lower() for c in df.columns]
+
+    MAPS = {
+        'num_venda':    ['número','numero','num','nf','nota fiscal','pedido','venda',
+                         'número da venda','num. venda','cod. venda','código','codigo'],
+        'data_venda':   ['data','emissão','emissao','data de emissão','data emissão',
+                         'data emissao','data venda','data da venda'],
+        'cliente':      ['cliente','nome','razão social','razao social','nome do cliente',
+                         'comprador','destinatário','destinatario'],
+        'cidade':       ['cidade','município','municipio','local','localidade'],
+        'produto':      ['produto','serviço','servico','descrição','descricao','item',
+                         'produto/serviço','discriminação','discriminacao'],
+        'safra_raw':    ['safra','observação','observacao','obs','referência','referencia',
+                         'complemento','informação adicional'],
+        'quantidade':   ['quantidade','qtd','qtd.','qtde','qtde.'],
+        'valor_bruto':  ['valor bruto','v. bruto','total','valor total','valor',
+                         'preço total','preco total','total bruto'],
+        'valor_liquido':['valor líquido','valor liquido','v. líquido','v. liquido',
+                         'líquido','liquido','valor liq','total líquido'],
+    }
+
+    col_map = {}
+    for target, candidates in MAPS.items():
+        for cand in candidates:
+            if cand in df.columns:
+                col_map[target] = cand
+                break
+
+    required = ['num_venda', 'data_venda', 'cliente', 'produto', 'valor_bruto']
+    missing = [r for r in required if r not in col_map]
+    if missing:
+        avail = ', '.join(df.columns.tolist())
+        return None, (f"Colunas obrigatórias não encontradas: {missing}.\n"
+                      f"Colunas no arquivo: {avail}\n\n"
+                      f"Renomeie as colunas no Excel para os nomes esperados e tente novamente.")
+
+    out = pd.DataFrame()
+    for target, src in col_map.items():
+        out[target] = df[src]
+
+    if 'safra_raw'    not in out.columns: out['safra_raw']    = out['produto']
+    if 'cidade'       not in out.columns: out['cidade']       = ''
+    if 'valor_liquido' not in out.columns: out['valor_liquido'] = out['valor_bruto']
+    if 'quantidade'   not in out.columns: out['quantidade']   = '1'
+
+    out['num_venda']    = pd.to_numeric(out['num_venda'].astype(str).str.replace(r'\D','',regex=True), errors='coerce').fillna(0).astype(int)
+    out['data_venda']   = pd.to_datetime(out['data_venda'], dayfirst=True, errors='coerce')
+    out['quantidade']   = out['quantidade'].apply(parse_br_number)
+    out['valor_bruto']  = out['valor_bruto'].apply(parse_br_number)
+    out['valor_liquido']= out['valor_liquido'].apply(parse_br_number)
+
+    out = out[out['data_venda'].notna() & (out['valor_bruto'] > 0)].copy()
+    if out.empty:
+        return None, "Nenhum registro válido encontrado após processamento."
+
+    out['cidade']    = out['cidade'].fillna('').str.title().str.strip()
+    out['cliente']   = out['cliente'].fillna('').str.strip()
+    out['produto']   = out['produto'].fillna('').str.strip()
+    out['safra_raw'] = out['safra_raw'].fillna('').str.strip()
+    out['categoria'] = out['produto'].apply(categorize_produto)
+    out['safra']     = out['safra_raw'].apply(extract_safra)
+    out['is_silagem']= out['produto'].str.upper().str.contains(
+                           'CORTE DE SILAGEM|CLAAS|FR 500|FR BIG|KRONE', na=False)
+    out['hectares']  = out.apply(lambda r: r['quantidade'] if r['is_silagem'] else 0.0, axis=1)
+    out['ano_mes']   = out['data_venda'].dt.to_period('M').astype(str)
+    out['ano']       = out['data_venda'].dt.year
+    out['mes']       = out['data_venda'].dt.month
+
+    vl = out.groupby('num_venda')['valor_liquido'].sum().reset_index()
+    vl.columns = ['num_venda','valor_liquido_total_venda']
+    out = out.merge(vl, on='num_venda', how='left')
+
+    if merge and VENDAS_FILE.exists():
+        existing = pd.read_csv(VENDAS_FILE, compression='gzip', parse_dates=['data_venda'])
+        existing['is_silagem'] = existing['is_silagem'].astype(bool)
+        existing = existing[~existing['num_venda'].isin(out['num_venda'].unique())]
+        out = pd.concat([existing, out], ignore_index=True)
+        out = out.sort_values('data_venda').reset_index(drop=True)
+
+    DATA_DIR.mkdir(exist_ok=True)
+    out.to_csv(VENDAS_FILE, index=False, compression='gzip')
+    return out, None
+
+
+# ═══════════════════════════════════════════════════════════════════
 # HELPERS
 # ═══════════════════════════════════════════════════════════════════
 def fmt_brl(v):
@@ -361,6 +466,38 @@ with st.sidebar:
     if st.button("🔄 Atualizar Dados"):
         if VENDAS_FILE.exists(): VENDAS_FILE.unlink()
         st.cache_data.clear(); st.rerun()
+
+    st.markdown("---")
+    with st.expander("📤 Importar do Conta Azul"):
+        st.markdown("""
+**Como exportar do Conta Azul:**
+1. Acesse **Vendas → Relatórios**
+2. Escolha o período desejado
+3. Clique em **Exportar → Excel**
+4. Faça o upload abaixo
+""")
+        st.caption("Aceita .xlsx, .xls ou .csv")
+        arq = st.file_uploader(
+            "Selecionar arquivo", type=['xlsx','xls','csv'],
+            label_visibility='collapsed', key='uploader_ca'
+        )
+        merge_opt = st.checkbox(
+            "Mesclar com histórico existente", value=True,
+            help="Marcado: adiciona os novos registros sem apagar os anteriores.\n"
+                 "Desmarcado: substitui todos os dados."
+        )
+        if arq:
+            with st.spinner("Processando..."):
+                df_imp, erro = import_conta_azul(arq, merge=merge_opt)
+            if erro:
+                st.error(f"❌ {erro}")
+            else:
+                min_d = df_imp['data_venda'].min().strftime('%d/%m/%Y')
+                max_d = df_imp['data_venda'].max().strftime('%d/%m/%Y')
+                st.success(f"✅ {len(df_imp):,} registros no total")
+                st.caption(f"Período: {min_d} → {max_d}")
+                if st.button("🔄 Recarregar Dashboard", key="btn_reload_imp"):
+                    st.cache_data.clear(); st.rerun()
 
 # ─── Modo Escuro ─────────────────────────────────────────────────
 if modo_escuro:
