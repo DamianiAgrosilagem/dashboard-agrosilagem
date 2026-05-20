@@ -940,7 +940,7 @@ with tab_fidelidade:
     with col_l:
         section("Distribuição de Fidelidade")
         fid_grupo = fid.groupby('categoria_fidelidade').agg(
-            clientes=('cliente','count'), faturamento=('valor_bruto','sum')).reset_index()
+            clientes=('cliente','count'), faturamento=('faturamento','sum')).reset_index()
         fig = px.pie(fid_grupo, values='clientes', names='categoria_fidelidade',
                      color_discrete_sequence=[VERDE_CLARO, AZUL, LARANJA], hole=0.4)
         fig.update_traces(textinfo='label+percent+value', textfont_size=12)
@@ -962,19 +962,19 @@ with tab_fidelidade:
     fieis = fid[fid['num_safras']>=4].sort_values('faturamento', ascending=False)
     if len(fieis) > 0:
         fieis_show = fieis.copy()
-        fieis_show['valor_bruto'] = fieis_show['valor_bruto'].apply(fmt_brl)
-        st.dataframe(fieis_show[['cliente','num_safras','valor_bruto']]
-                     .rename(columns={'cliente':'Cliente','num_safras':'Safras','valor_bruto':'Faturamento'}),
+        fieis_show['faturamento'] = fieis_show['faturamento'].apply(fmt_brl)
+        st.dataframe(fieis_show[['cliente','num_safras','faturamento']]
+                     .rename(columns={'cliente':'Cliente','num_safras':'Safras','faturamento':'Faturamento'}),
                      use_container_width=True, hide_index=True)
     else:
         st.info("Nenhum cliente com 4 ou mais safras no período filtrado.")
 
     section("Clientes de Primeira Vez (potencial de retorno)")
-    novos = fid[fid['num_safras']==1].sort_values('valor_bruto', ascending=False).head(20)
+    novos = fid[fid['num_safras']==1].sort_values('faturamento', ascending=False).head(20)
     novos_show = novos.copy()
-    novos_show['valor_bruto'] = novos_show['valor_bruto'].apply(fmt_brl)
-    st.dataframe(novos_show[['cliente','valor_bruto']]
-                 .rename(columns={'cliente':'Cliente','valor_bruto':'Faturamento'}),
+    novos_show['faturamento'] = novos_show['faturamento'].apply(fmt_brl)
+    st.dataframe(novos_show[['cliente','faturamento']]
+                 .rename(columns={'cliente':'Cliente','faturamento':'Faturamento'}),
                  use_container_width=True, hide_index=True)
     st.caption(f"Total de {len(fid[fid['num_safras']==1])} clientes contrataram apenas uma vez — oportunidade de fidelização.")
 
