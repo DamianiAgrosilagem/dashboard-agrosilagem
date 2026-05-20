@@ -501,6 +501,20 @@ with st.sidebar:
                 max_d = df_imp['data_venda'].max().strftime('%d/%m/%Y')
                 st.success(f"✅ {len(df_imp):,} registros no total")
                 st.caption(f"Período: {min_d} → {max_d}")
+
+                # Gera bytes do CSV.gz para download permanente
+                buf = io.BytesIO()
+                df_imp.to_csv(buf, index=False, compression='gzip')
+                st.download_button(
+                    "⬇️ Baixar base atualizada",
+                    data=buf.getvalue(),
+                    file_name="vendas.csv.gz",
+                    mime="application/gzip",
+                    help="Salve este arquivo em data/vendas.csv.gz e faça git push para tornar os dados permanentes.",
+                    key="btn_download_csv"
+                )
+                st.caption("💡 Para atualização permanente: baixe o arquivo → substitua data/vendas.csv.gz → git push origin main")
+
                 if st.button("🔄 Recarregar Dashboard", key="btn_reload_imp"):
                     st.cache_data.clear(); st.rerun()
 
