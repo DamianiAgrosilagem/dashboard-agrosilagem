@@ -930,6 +930,7 @@ with tab_fidelidade:
     fid = df[df['is_silagem']].groupby('cliente')['safra'].nunique().reset_index()
     fid.columns = ['cliente','num_safras']
     fid_fat = df.groupby('cliente')['valor_bruto'].sum().reset_index()
+    fid_fat.columns = ['cliente','faturamento']
     fid = fid.merge(fid_fat, on='cliente')
     fid['categoria_fidelidade'] = fid['num_safras'].apply(
         lambda n: '⭐ Fiel (4+ safras)' if n >= 4 else
