@@ -133,8 +133,7 @@ BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
 PDF_DIR  = BASE_DIR.parent  # pasta DOWLOAD
 
-VENDAS_FILE = DATA_DIR / "vendas.parquet"
-RESUMO_FILE = DATA_DIR / "resumo.parquet"
+VENDAS_FILE = DATA_DIR / "vendas.csv.gz"
 
 
 def parse_br_number(s):
@@ -255,10 +254,12 @@ def extract_pdf2(path):
 
 @st.cache_data(show_spinner=False)
 def build_dataset():
-    """Tenta carregar parquet em cache; se não existir, extrai dos PDFs."""
+    """Carrega CSV comprimido; se não existir, extrai dos PDFs."""
     if VENDAS_FILE.exists():
-        df = pd.read_parquet(VENDAS_FILE)
-        df['data_venda'] = pd.to_datetime(df['data_venda'], errors='coerce')
+        df = pd.read_csv(VENDAS_FILE, compression='gzip',
+                         parse_dates=['data_venda'])
+        df['is_silagem'] = df['is_silagem'].astype(bool)
+        df['hectares']   = df['hectares'].fillna(0)
         return df
 
     # Extração dos PDFs
