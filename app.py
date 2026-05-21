@@ -917,9 +917,14 @@ def _dlg_rpha():
     cliente_sel = st.selectbox(
         "Selecionar cliente",
         options=clientes_com_ha,
-        index=0,
+        index=None,
+        placeholder="Digite ou selecione um cliente...",
         key="sel_cliente_rpha",
     )
+
+    if not cliente_sel:
+        st.info("Selecione um cliente acima para visualizar o ticket médio por safra.")
+        return
 
     _cli = _v[_v['cliente'] == cliente_sel].groupby('safra').agg(
         ticket=('rpha','mean'),
