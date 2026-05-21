@@ -469,7 +469,8 @@ with st.sidebar:
     cidade_sel  = st.multiselect("Cidade",    sorted(df_raw['cidade'].dropna().unique()),    default=[], placeholder="Todas as cidades")
     cliente_sel = st.multiselect("Cliente",   sorted(df_raw['cliente'].dropna().unique()),   default=[], placeholder="Todos os clientes")
 
-    max_ha  = int(df_raw[df_raw['is_silagem']]['quantidade'].max())
+    _max_ha = df_raw[df_raw['is_silagem']]['quantidade'].max()
+    max_ha  = int(_max_ha) if pd.notna(_max_ha) and _max_ha > 0 else 1
     ha_range = st.slider("Faixa de Hectares", 0, max_ha, (0, max_ha))
 
     st.markdown("---")
