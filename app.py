@@ -596,20 +596,231 @@ st.markdown("""
 periodo_str = f"{dt_inicio.strftime('%d/%m/%Y')} — {dt_fim.strftime('%d/%m/%Y')}"
 st.caption(f"📅 Período: **{periodo_str}** &nbsp;|&nbsp; {len(df):,} registros | {num_vendas:,} vendas realizadas")
 
-# ─── KPI Cards ───────────────────────────────────────────────────
+# ─── KPI Cards interativos ───────────────────────────────────────
+if 'kpi_sel' not in st.session_state:
+    st.session_state['kpi_sel'] = None
+
+def _toggle(nome):
+    st.session_state['kpi_sel'] = None if st.session_state['kpi_sel'] == nome else nome
+
 c1,c2,c3,c4,c5,c6 = st.columns(6)
-with c1: st.markdown(kpi("Faturamento Bruto", fmt_brl(fat_total)), unsafe_allow_html=True)
-with c2: st.markdown(kpi("Receita Líquida", fmt_brl(liq_total), cls="azul"), unsafe_allow_html=True)
-with c3: st.markdown(kpi("Ticket Médio/ha", fmt_brl(ticket_medio), cls="laranja",
-                         delta=f"{len(vendas_ha)} vendas c/ ha"), unsafe_allow_html=True)
-with c4: st.markdown(kpi("Total Hectares", fmt_num(total_ha,1), cls="roxo",
-                         delta=fmt_brl(rec_ha)+"/ha"), unsafe_allow_html=True)
-with c5: st.markdown(kpi("Clientes Ativos", fmt_num(total_cli), cls="teal",
-                         delta=f"{num_vendas} vendas"), unsafe_allow_html=True)
+with c1:
+    st.markdown(kpi("Faturamento Bruto", fmt_brl(fat_total)), unsafe_allow_html=True)
+    if st.button("🔍 Ver composição", key="kbtn_fat", use_container_width=True): _toggle('fat')
+with c2:
+    st.markdown(kpi("Receita Líquida", fmt_brl(liq_total), cls="azul"), unsafe_allow_html=True)
+    if st.button("🔍 Ver composição", key="kbtn_liq", use_container_width=True): _toggle('liq')
+with c3:
+    st.markdown(kpi("Ticket Médio/ha", fmt_brl(ticket_medio), cls="laranja",
+                    delta=f"{len(vendas_ha)} vendas c/ ha"), unsafe_allow_html=True)
+    if st.button("🔍 Ver composição", key="kbtn_tkt", use_container_width=True): _toggle('tkt')
+with c4:
+    st.markdown(kpi("Total Hectares", fmt_num(total_ha,1), cls="roxo",
+                    delta=fmt_brl(rec_ha)+"/ha"), unsafe_allow_html=True)
+    if st.button("🔍 Ver composição", key="kbtn_ha", use_container_width=True): _toggle('ha')
+with c5:
+    st.markdown(kpi("Clientes Ativos", fmt_num(total_cli), cls="teal",
+                    delta=f"{num_vendas} vendas"), unsafe_allow_html=True)
+    if st.button("🔍 Ver composição", key="kbtn_cli", use_container_width=True): _toggle('cli')
 with c6:
     cls_conc = "vermelho" if conc5_pct > 60 else "laranja" if conc5_pct > 40 else ""
     st.markdown(kpi("Concentração Top 5", f"{conc5_pct:.1f}%", cls=cls_conc,
                     delta="⚠️ Risco alto" if conc5_pct > 60 else "✅ Saudável"), unsafe_allow_html=True)
+    if st.button("🔍 Ver composição", key="kbtn_conc", use_container_width=True): _toggle('conc')
+
+# ─── Painel de detalhamento do KPI selecionado ───────────────────
+_kpi = st.session_state['kpi_sel']
+if _kpi:
+    with st.container():
+        st.markdown("---")
+
+        if _kpi == 'fat':
+            st.markdown("### Composição do Faturamento Bruto")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                section("Por Categoria")
+                _cat = df.groupby('categoria')['valor_bruto'].sum().sort_values(ascending=False).reset_index()
+                _cat['%'] = (_cat['valor_bruto'] / fat_total * 100).round(1)
+                _cat['Valor'] = _cat['valor_bruto'].apply(fmt_brl)
+                fig = px.bar(_cat, x='categoria', y='valor_bruto', text='Valor',
+                             color='categoria', color_discrete_sequence=PALETTE)
+                fig.update_traces(textposition='outside')
+                layout_mobile(fig, 320, 80)
+                fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="",
+                                  yaxis=dict(showticklabels=False))
+                st.plotly_chart(fig, use_container_width=True)
+            with col_b:
+                section("Por Safra")
+                _saf = df.groupby('safra')['valor_bruto'].sum().sort_values(ascending=False).reset_index()
+                _saf['%'] = (_saf['valor_bruto'] / fat_total * 100).round(1)
+                _saf['Valor'] = _saf['valor_bruto'].apply(fmt_brl)
+                fig2 = px.bar(_saf, x='safra', y='valor_bruto', text='Valor',
+                              color='safra', color_discrete_sequence=PALETTE)
+                fig2.update_traces(textposition='outside')
+                layout_mobile(fig2, 320, 100)
+                fig2.update_layout(showlegend=False, xaxis_title="", yaxis_title="",
+                                   yaxis=dict(showticklabels=False))
+                st.plotly_chart(fig2, use_container_width=True)
+
+            section("Top 10 Clientes — Faturamento")
+            _top = cli_df.head(10)[['rank','cliente','faturamento','num_vendas','cidade']].copy()
+            _top['faturamento'] = _top['faturamento'].apply(fmt_brl)
+            _top.columns = ['#','Cliente','Faturamento','Vendas','Cidade']
+            st.dataframe(_top, use_container_width=True, hide_index=True)
+
+        elif _kpi == 'liq':
+            st.markdown("### Composição da Receita Líquida")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                section("Bruto vs Líquido por Categoria")
+                _cat = df.groupby('categoria').agg(
+                    Bruto=('valor_bruto','sum'), Líquido=('valor_liquido','sum')).reset_index()
+                _cat = _cat.sort_values('Bruto', ascending=False)
+                fig = go.Figure()
+                fig.add_bar(name='Bruto',   x=_cat['categoria'], y=_cat['Bruto'],
+                            marker_color=VERDE_CLARO,
+                            text=_cat['Bruto'].apply(fmt_brl), textposition='outside')
+                fig.add_bar(name='Líquido', x=_cat['categoria'], y=_cat['Líquido'],
+                            marker_color=AZUL,
+                            text=_cat['Líquido'].apply(fmt_brl), textposition='outside')
+                fig.update_layout(barmode='group')
+                layout_mobile(fig, 340, 80)
+                fig.update_layout(xaxis_title="", yaxis=dict(showticklabels=False))
+                st.plotly_chart(fig, use_container_width=True)
+            with col_b:
+                section("Desconto por Categoria")
+                _cat2 = df.groupby('categoria').agg(
+                    bruto=('valor_bruto','sum'), liquido=('valor_liquido','sum')).reset_index()
+                _cat2['desconto'] = _cat2['bruto'] - _cat2['liquido']
+                _cat2['desc_pct'] = (_cat2['desconto'] / _cat2['bruto'] * 100).round(1)
+                _cat2 = _cat2.sort_values('desconto', ascending=False)
+                fig3 = px.bar(_cat2, x='categoria', y='desc_pct',
+                              text=_cat2['desc_pct'].apply(lambda v: f"{v:.1f}%"),
+                              color='categoria', color_discrete_sequence=PALETTE)
+                fig3.update_traces(textposition='outside')
+                layout_mobile(fig3, 340, 80)
+                fig3.update_layout(showlegend=False, xaxis_title="",
+                                   yaxis_title="Desconto (%)",
+                                   yaxis=dict(showticklabels=True))
+                st.plotly_chart(fig3, use_container_width=True)
+
+            _desc_total = fat_total - liq_total
+            _desc_pct   = _desc_total / fat_total * 100 if fat_total > 0 else 0
+            st.info(f"**Desconto total:** {fmt_brl(_desc_total)} ({_desc_pct:.1f}% sobre o bruto)")
+
+        elif _kpi == 'tkt':
+            st.markdown("### Composição do Ticket Médio por Hectare")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                section("Ticket Médio por Safra")
+                _saf = (df[df['is_silagem']].groupby(['num_venda','safra'])
+                        .agg(fat=('valor_bruto','sum'), ha=('hectares','sum')).reset_index())
+                _saf = _saf[_saf['ha'] > 0]
+                _saf_g = _saf.groupby('safra').apply(
+                    lambda x: (x['fat'] / x['ha']).mean()).reset_index()
+                _saf_g.columns = ['safra','ticket']
+                _saf_g = _saf_g.sort_values('ticket', ascending=False)
+                fig = px.bar(_saf_g, x='safra', y='ticket',
+                             text=_saf_g['ticket'].apply(fmt_brl),
+                             color='safra', color_discrete_sequence=PALETTE)
+                fig.update_traces(textposition='outside')
+                layout_mobile(fig, 320, 100)
+                fig.update_layout(showlegend=False, xaxis_title="",
+                                  yaxis=dict(showticklabels=False), yaxis_title="")
+                st.plotly_chart(fig, use_container_width=True)
+            with col_b:
+                section("Top 10 Clientes — Ticket Médio/ha")
+                _cli_tkt = cli_df[cli_df['hectares'] > 0].copy()
+                _cli_tkt = _cli_tkt.head(10)[['cliente','ticket_medio_ha','hectares','faturamento']]
+                _cli_tkt['ticket_medio_ha'] = _cli_tkt['ticket_medio_ha'].apply(fmt_brl)
+                _cli_tkt['faturamento']      = _cli_tkt['faturamento'].apply(fmt_brl)
+                _cli_tkt['hectares']         = _cli_tkt['hectares'].apply(lambda v: fmt_num(v,1))
+                _cli_tkt.columns = ['Cliente','Ticket/ha','Hectares','Faturamento']
+                st.dataframe(_cli_tkt, use_container_width=True, hide_index=True)
+
+        elif _kpi == 'ha':
+            st.markdown("### Composição dos Hectares Trabalhados")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                section("Hectares por Safra")
+                _sha = (df[df['is_silagem']].groupby('safra')['hectares']
+                        .sum().sort_values(ascending=False).reset_index())
+                _sha['%'] = (_sha['hectares'] / total_ha * 100).round(1)
+                fig = px.bar(_sha, x='safra', y='hectares',
+                             text=_sha['hectares'].apply(lambda v: fmt_num(v,1)),
+                             color='safra', color_discrete_sequence=PALETTE)
+                fig.update_traces(textposition='outside')
+                layout_mobile(fig, 320, 100)
+                fig.update_layout(showlegend=False, xaxis_title="",
+                                  yaxis=dict(showticklabels=False), yaxis_title="")
+                st.plotly_chart(fig, use_container_width=True)
+            with col_b:
+                section("Top 10 Clientes — Hectares")
+                _cha = cli_df[cli_df['hectares'] > 0].head(10)[
+                    ['cliente','hectares','faturamento','ticket_medio_ha']].copy()
+                _cha['hectares']        = _cha['hectares'].apply(lambda v: fmt_num(v,1))
+                _cha['faturamento']     = _cha['faturamento'].apply(fmt_brl)
+                _cha['ticket_medio_ha'] = _cha['ticket_medio_ha'].apply(fmt_brl)
+                _cha.columns = ['Cliente','Hectares','Faturamento','Ticket/ha']
+                st.dataframe(_cha, use_container_width=True, hide_index=True)
+
+        elif _kpi == 'cli':
+            st.markdown("### Composição dos Clientes Ativos")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                section("Faturamento — Top 15 Clientes")
+                _top15 = cli_df.head(15).copy()
+                fig = px.bar(_top15, x='faturamento', y='cliente', orientation='h',
+                             text=_top15['faturamento'].apply(fmt_brl),
+                             color_discrete_sequence=[VERDE_ESCURO])
+                fig.update_traces(textposition='outside')
+                layout_mobile(fig, 420, 10)
+                fig.update_layout(showlegend=False, xaxis=dict(showticklabels=False),
+                                  xaxis_title="", yaxis_title="")
+                st.plotly_chart(fig, use_container_width=True)
+            with col_b:
+                section("Clientes por Nº de Vendas")
+                _nv = cli_df.sort_values('num_vendas', ascending=False).head(15)[
+                    ['cliente','num_vendas','faturamento','cidade']].copy()
+                _nv['faturamento'] = _nv['faturamento'].apply(fmt_brl)
+                _nv.columns = ['Cliente','Vendas','Faturamento','Cidade']
+                st.dataframe(_nv, use_container_width=True, hide_index=True)
+
+            section("Lista Completa de Clientes")
+            _all = cli_df[['rank','cliente','faturamento','liquido','hectares','num_vendas','cidade']].copy()
+            _all['faturamento'] = _all['faturamento'].apply(fmt_brl)
+            _all['liquido']     = _all['liquido'].apply(fmt_brl)
+            _all['hectares']    = _all['hectares'].apply(lambda v: fmt_num(v,1))
+            _all.columns = ['#','Cliente','Fat. Bruto','Rec. Líquida','Hectares','Vendas','Cidade']
+            st.dataframe(_all, use_container_width=True, hide_index=True)
+
+        elif _kpi == 'conc':
+            st.markdown("### Análise de Concentração de Carteira")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                section("Participação no Faturamento")
+                _top5_df  = cli_df.head(5)[['cliente','faturamento']].copy()
+                _top5_df['grupo'] = _top5_df['cliente']
+                _outros = pd.DataFrame([{'cliente':'Demais clientes',
+                                         'faturamento': fat_total - fat_top5,
+                                         'grupo':'Demais clientes'}])
+                _pie = pd.concat([_top5_df, _outros], ignore_index=True)
+                fig = px.pie(_pie, values='faturamento', names='grupo',
+                             color_discrete_sequence=PALETTE, hole=0.4)
+                fig.update_traces(textinfo='label+percent', textposition='inside')
+                layout_mobile(fig, 340, 10)
+                fig.update_layout(showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+            with col_b:
+                section("Ranking Completo com % Acumulado")
+                _rank = cli_df[['rank','cliente','faturamento']].copy()
+                _rank['%'] = (_rank['faturamento'] / fat_total * 100).round(1)
+                _rank['% Acum.'] = _rank['%'].cumsum().round(1)
+                _rank['faturamento'] = _rank['faturamento'].apply(fmt_brl)
+                _rank.columns = ['#','Cliente','Faturamento','%','% Acum.']
+                st.dataframe(_rank, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
 
 # ─── Alerta de concentração ──────────────────────────────────────
 if conc5_pct > 60:
