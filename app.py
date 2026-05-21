@@ -3,6 +3,7 @@ Dashboard Comercial e Financeiro
 AGROSILAGEM SERVICOS AGROPECUARIOS E TRANSPORTES LTDA
 """
 import streamlit as st
+import streamlit.components.v1 as stc
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -106,6 +107,38 @@ st.markdown("""
     [data-testid="stSidebar"] .stSlider [data-testid="stTickBarMin"],
     [data-testid="stSidebar"] .stSlider [data-testid="stTickBarMax"] {
         color: rgba(255,255,255,0.8) !important;
+    }
+    /* Botões da sidebar */
+    [data-testid="stSidebar"] .stButton > button {
+        background: rgba(255,255,255,0.18) !important;
+        color: #FFFFFF !important;
+        border: 1px solid rgba(255,255,255,0.45) !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+    }
+    [data-testid="stSidebar"] .stButton > button:hover {
+        background: rgba(255,255,255,0.32) !important;
+    }
+
+    /* Abas — fundo destacado */
+    [data-baseweb="tab-list"] { gap: 4px !important; }
+    [data-baseweb="tab"] {
+        background: #e8f5e9 !important;
+        border-radius: 8px 8px 0 0 !important;
+        border: 1px solid #c8e6c9 !important;
+        border-bottom: none !important;
+        color: #1B5E20 !important;
+        font-weight: 600 !important;
+        padding: 8px 14px !important;
+        margin-right: 2px !important;
+    }
+    [data-baseweb="tab"]:hover {
+        background: #c8e6c9 !important;
+    }
+    [aria-selected="true"][data-baseweb="tab"] {
+        background: #1B5E20 !important;
+        color: white !important;
+        border-color: #1B5E20 !important;
     }
 
     .kpi-card {
@@ -596,36 +629,47 @@ st.markdown("""
 periodo_str = f"{dt_inicio.strftime('%d/%m/%Y')} — {dt_fim.strftime('%d/%m/%Y')}"
 st.caption(f"📅 Período: **{periodo_str}** &nbsp;|&nbsp; {len(df):,} registros | {num_vendas:,} vendas realizadas")
 
-# ─── CSS: KPI cards como botões ──────────────────────────────────
-st.markdown("""
-<style>
-[data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"] button {
-    border: none !important; border-radius: 12px !important;
-    min-height: 85px !important; color: white !important;
-    font-weight: 700 !important; font-size: 0.95rem !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important;
-    transition: all 0.15s ease !important;
-    white-space: pre-line !important; line-height: 1.6 !important;
-    padding: 10px 8px !important;
+# ─── JavaScript: estiliza KPI cards dinamicamente ────────────────
+stc.html("""
+<script>
+const GRADS = [
+  ['FATURAMENTO BRUTO',  'linear-gradient(135deg,#2E7D32,#1B5E20)'],
+  ['RECEITA LÍQ',        'linear-gradient(135deg,#1565C0,#0D47A1)'],
+  ['TICKET MÉDIO',       'linear-gradient(135deg,#E65100,#BF360C)'],
+  ['TOTAL HECTARES',     'linear-gradient(135deg,#6A1B9A,#4A148C)'],
+  ['CLIENTES ATIVOS',    'linear-gradient(135deg,#00838F,#006064)'],
+  ['CONCENTRAÇÃO',       'linear-gradient(135deg,#C62828,#B71C1C)'],
+];
+function applyKPI() {
+  try {
+    const doc = window.parent.document;
+    doc.querySelectorAll('button').forEach(btn => {
+      const txt = (btn.innerText || '').trim().toUpperCase();
+      for (const [prefix, grad] of GRADS) {
+        if (txt.startsWith(prefix)) {
+          btn.style.background    = grad;
+          btn.style.color         = 'white';
+          btn.style.border        = 'none';
+          btn.style.borderRadius  = '12px';
+          btn.style.minHeight     = '85px';
+          btn.style.fontWeight    = '700';
+          btn.style.fontSize      = '0.88rem';
+          btn.style.whiteSpace    = 'pre-line';
+          btn.style.lineHeight    = '1.6';
+          btn.style.boxShadow     = '0 4px 12px rgba(0,0,0,0.22)';
+          btn.style.transition    = 'all 0.15s ease';
+          btn.style.padding       = '10px 8px';
+          break;
+        }
+      }
+    });
+  } catch(e) {}
 }
-[data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"] button:hover {
-    transform: translateY(-3px) !important;
-    box-shadow: 0 8px 22px rgba(0,0,0,0.32) !important; opacity: 0.93 !important;
-}
-[data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:nth-child(1) button
-    { background: linear-gradient(135deg,#2E7D32,#1B5E20) !important; }
-[data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:nth-child(2) button
-    { background: linear-gradient(135deg,#1565C0,#0D47A1) !important; }
-[data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:nth-child(3) button
-    { background: linear-gradient(135deg,#E65100,#BF360C) !important; }
-[data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:nth-child(4) button
-    { background: linear-gradient(135deg,#6A1B9A,#4A148C) !important; }
-[data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:nth-child(5) button
-    { background: linear-gradient(135deg,#00838F,#006064) !important; }
-[data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:nth-child(6) button
-    { background: linear-gradient(135deg,#C62828,#B71C1C) !important; }
-</style>
-""", unsafe_allow_html=True)
+applyKPI();
+new MutationObserver(() => setTimeout(applyKPI, 80))
+  .observe(document.documentElement, {childList:true, subtree:true});
+</script>
+""", height=0)
 
 # ─── Modais de detalhamento ───────────────────────────────────────
 @st.dialog("📊 Faturamento Bruto", width="large")
