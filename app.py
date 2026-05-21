@@ -1017,10 +1017,8 @@ with c6:
         _dlg_conc()
 
 # ─── Botão R$/ha por Cliente/Ano ─────────────────────────────────
-_c_rpha = st.columns([1, 2, 1])
-with _c_rpha[1]:
-    if st.button("📈 Ticket Médio R$/ha por Cliente e Safra", key="kb_rpha", use_container_width=True):
-        _dlg_rpha()
+if st.button("📈 Ticket Médio R$/ha por Cliente e Safra", key="kb_rpha", use_container_width=True):
+    _dlg_rpha()
 
 # ─── Alerta de concentração ──────────────────────────────────────
 if conc5_pct > 60:
