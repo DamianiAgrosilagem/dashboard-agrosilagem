@@ -326,9 +326,11 @@ def import_conta_azul(uploaded_file, merge=True):
                          'comprador','destinatário','destinatario'],
         'cidade':       ['cidade do cliente','cidade','município','municipio','local','localidade'],
         'produto':      ['nome do produto/serviço','produto/serviço','produto','serviço',
-                         'servico','descrição','descricao','item','discriminação','discriminacao'],
+                         'servico','descrição','descricao','item','discriminação','discriminacao',
+                         'tipo de item (produto ou serviço)','tipo de item','tipo'],
         'safra_raw':    ['detalhes do item','safra','observação','observacao','obs',
-                         'referência','referencia','complemento','informação adicional'],
+                         'referência','referencia','complemento','informação adicional',
+                         'forma de pagamento'],
         'quantidade':   ['quantidade de itens','quantidade','qtd','qtd.','qtde','qtde.'],
         'valor_bruto':  ['valor bruto','v. bruto','total','valor total','valor',
                          'preço total','preco total','total bruto'],
@@ -343,10 +345,10 @@ def import_conta_azul(uploaded_file, merge=True):
                 col_map[target] = cand
                 break
 
-    # valor_bruto é opcional — usa valor_liquido como fallback
-    required = ['num_venda', 'data_venda', 'cliente', 'produto']
+    # Apenas num_venda, data_venda, cliente e pelo menos um valor são obrigatórios
+    required = ['num_venda', 'data_venda', 'cliente']
     if 'valor_bruto' not in col_map and 'valor_liquido' not in col_map:
-        required.append('valor_bruto')  # força erro descritivo
+        required.append('valor_bruto')  # força erro descritivo se não houver nenhum valor
 
     missing = [r for r in required if r not in col_map]
     if missing:
@@ -358,10 +360,10 @@ def import_conta_azul(uploaded_file, merge=True):
     for target, src in col_map.items():
         out[target] = df[src]
 
+    if 'produto'       not in out.columns: out['produto']       = 'Serviço'
     if 'safra_raw'     not in out.columns: out['safra_raw']     = out['produto']
     if 'cidade'        not in out.columns: out['cidade']        = ''
     if 'quantidade'    not in out.columns: out['quantidade']    = '1'
-    # Se não há valor_bruto, usa valor_liquido no lugar
     if 'valor_bruto'   not in out.columns: out['valor_bruto']   = out['valor_liquido']
     if 'valor_liquido' not in out.columns: out['valor_liquido'] = out['valor_bruto']
 
