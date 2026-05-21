@@ -898,85 +898,90 @@ def _dlg_conc():
         st.dataframe(_rank, use_container_width=True, hide_index=True)
 
 # ─── Modal: R$/ha por Cliente × Ano ─────────────────────────────
-@st.dialog("🌡️ R$/ha por Cliente × Ano", width="large")
+@st.dialog("📈 Ticket Médio por Safra — Cliente", width="large")
 def _dlg_rpha():
     _base = df[df['is_silagem'] & (df['hectares'] > 0)].copy()
     if _base.empty:
         st.warning("Nenhum dado de silagem encontrado no período filtrado.")
         return
 
-    # Pivot: cliente × ano → ticket médio (fat/ha por venda, depois média)
-    _v = _base.groupby(['num_venda','cliente','ano']).agg(
+    # Calcula ticket médio (R$/ha) por venda e depois agrega por cliente+safra
+    _v = _base.groupby(['num_venda','cliente','safra']).agg(
         fat=('valor_bruto','sum'), ha=('hectares','sum')).reset_index()
     _v = _v[_v['ha'] > 0]
     _v['rpha'] = _v['fat'] / _v['ha']
-    _pivot_raw = _v.groupby(['cliente','ano'])['rpha'].mean().reset_index()
-    _pivot = _pivot_raw.pivot(index='cliente', columns='ano', values='rpha')
 
-    # Ordena clientes por média geral (maior → menor)
-    _pivot['_media'] = _pivot.mean(axis=1)
-    _pivot = _pivot.sort_values('_media', ascending=False).drop(columns='_media')
+    clientes_com_ha = sorted(_v['cliente'].unique().tolist())
 
-    anos = [str(a) for a in sorted(_pivot.columns.tolist())]
-    clientes = _pivot.index.tolist()
-    z = _pivot.values.tolist()
+    cliente_sel = st.selectbox(
+        "Selecionar cliente",
+        options=clientes_com_ha,
+        index=0,
+        key="sel_cliente_rpha",
+    )
 
-    # ── Heatmap ──
-    section("Mapa de Calor — R$/ha por Cliente e Ano")
-    fig = go.Figure(go.Heatmap(
-        z=z,
-        x=anos,
-        y=clientes,
-        colorscale=[
-            [0.0,  "#E8F5E9"],
-            [0.25, "#A5D6A7"],
-            [0.5,  "#4CAF50"],
-            [0.75, "#2E7D32"],
-            [1.0,  "#1B5E20"],
-        ],
-        hoverongaps=False,
-        hovertemplate="<b>%{y}</b><br>Ano: %{x}<br>R$/ha: R$ %{z:,.0f}<extra></extra>",
-        text=[[f"R$ {v:,.0f}".replace(",","X").replace(".",",").replace("X",".")
-               if not np.isnan(v) else "—"
-               for v in row] for row in z],
-        texttemplate="%{text}",
-        textfont=dict(size=10, color="white"),
-        showscale=True,
-        colorbar=dict(title="R$/ha", tickformat=",.0f"),
-    ))
-    h = max(320, len(clientes) * 32)
+    _cli = _v[_v['cliente'] == cliente_sel].groupby('safra').agg(
+        ticket=('rpha','mean'),
+        vendas=('num_venda','nunique'),
+        ha_total=('ha','sum'),
+        fat_total=('fat','sum'),
+    ).reset_index()
+
+    # Ordena safras pela ordem cronológica definida
+    _safra_cat = pd.Categorical(_cli['safra'], categories=SAFRA_ORDER, ordered=True)
+    _cli['safra_ord'] = _safra_cat
+    _cli = _cli.sort_values('safra_ord').drop(columns='safra_ord')
+
+    if _cli.empty:
+        st.info(f"{cliente_sel} não possui vendas de silagem com hectares registrados.")
+        return
+
+    media_geral = _cli['ticket'].mean()
+
+    # ── Gráfico de barras ──
+    section(f"Ticket Médio R$/ha — {cliente_sel}")
+    fig = go.Figure()
+    cores = [VERDE_ESCURO if t >= media_geral else LARANJA for t in _cli['ticket']]
+    fig.add_bar(
+        x=_cli['safra'],
+        y=_cli['ticket'],
+        marker_color=cores,
+        text=[fmt_brl(v) for v in _cli['ticket']],
+        textposition='outside',
+        hovertemplate="<b>%{x}</b><br>R$/ha: %{text}<extra></extra>",
+    )
+    fig.add_hline(
+        y=media_geral,
+        line_dash="dash",
+        line_color=AZUL,
+        annotation_text=f"Média: {fmt_brl(media_geral)}",
+        annotation_position="top right",
+        annotation_font=dict(color=AZUL, size=11),
+    )
+    layout_mobile(fig, height=380, margin_b=100)
     fig.update_layout(
-        height=h,
-        margin=dict(l=10, r=10, t=10, b=10),
-        paper_bgcolor="#FFFFFF",
-        plot_bgcolor="#F7FBF7",
-        font=dict(size=11, family="Arial, sans-serif"),
-        xaxis=dict(side="top", tickfont=dict(size=12, color="#1B5E20"), title=""),
-        yaxis=dict(tickfont=dict(size=11), title="", autorange="reversed"),
+        showlegend=False,
+        xaxis_title="Safra",
+        yaxis_title="R$/ha",
+        yaxis=dict(showticklabels=True),
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # ── Tabela pivot com valores formatados ──
-    section("Tabela de Valores — R$/ha")
-    _tbl = _pivot.copy()
-    for col in _tbl.columns:
-        _tbl[col] = _tbl[col].apply(
-            lambda v: f"R$ {v:,.0f}".replace(",","X").replace(".",",").replace("X",".")
-            if not np.isnan(v) else "—")
-    _tbl.index.name = "Cliente"
-    _tbl.columns = [str(c) for c in _tbl.columns]
-    st.dataframe(_tbl, use_container_width=True)
+    # ── KPIs do cliente ──
+    k1, k2, k3, k4 = st.columns(4)
+    with k1: st.metric("Ticket Médio Geral", fmt_brl(media_geral))
+    with k2: st.metric("Melhor Safra", _cli.loc[_cli['ticket'].idxmax(), 'safra'])
+    with k3: st.metric("Total Hectares", fmt_num(_cli['ha_total'].sum(), 1) + " ha")
+    with k4: st.metric("Total Faturado", fmt_brl(_cli['fat_total'].sum()))
 
-    # ── Destaques ──
-    _melhor = _pivot_raw.loc[_pivot_raw['rpha'].idxmax()]
-    _pior   = _pivot_raw.loc[_pivot_raw['rpha'].idxmin()]
-    c1_, c2_ = st.columns(2)
-    with c1_:
-        st.success(f"**Maior R$/ha:** {_melhor['cliente']} em {int(_melhor['ano'])} — "
-                   f"R$ {_melhor['rpha']:,.0f}".replace(",","X").replace(".",",").replace("X","."))
-    with c2_:
-        st.info(f"**Menor R$/ha:** {_pior['cliente']} em {int(_pior['ano'])} — "
-                f"R$ {_pior['rpha']:,.0f}".replace(",","X").replace(".",",").replace("X","."))
+    # ── Tabela detalhada ──
+    section("Detalhe por Safra")
+    _tbl = _cli[['safra','ticket','ha_total','fat_total','vendas']].copy()
+    _tbl['ticket']    = _tbl['ticket'].apply(fmt_brl)
+    _tbl['ha_total']  = _tbl['ha_total'].apply(lambda v: fmt_num(v,1) + " ha")
+    _tbl['fat_total'] = _tbl['fat_total'].apply(fmt_brl)
+    _tbl.columns = ['Safra','Ticket R$/ha','Hectares','Faturamento','Vendas']
+    st.dataframe(_tbl, use_container_width=True, hide_index=True)
 
 
 # ─── KPI Cards (botões que abrem modal) ──────────────────────────
@@ -1008,7 +1013,7 @@ with c6:
 # ─── Botão R$/ha por Cliente/Ano ─────────────────────────────────
 _c_rpha = st.columns([1, 2, 1])
 with _c_rpha[1]:
-    if st.button("🌡️ Ver R$/ha por Cliente × Ano", key="kb_rpha", use_container_width=True):
+    if st.button("📈 Ticket Médio R$/ha por Cliente e Safra", key="kb_rpha", use_container_width=True):
         _dlg_rpha()
 
 # ─── Alerta de concentração ──────────────────────────────────────
