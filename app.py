@@ -204,6 +204,12 @@ st.markdown("""
         padding: 4px;
         margin-bottom: 8px;
     }
+    /* Botão destaque R$/ha */
+    [data-testid="stButton"][data-key="kb_rpha"] button,
+    button[data-testid="baseButton-secondary"]:has(div p) {
+        font-weight: 600 !important;
+    }
+
     /* Ocultar iframe invisível do componente JS */
     [data-testid="stCustomComponentV1"] {
         display: none !important;
@@ -891,6 +897,88 @@ def _dlg_conc():
         _rank.columns = ['#','Cliente','Faturamento','%','% Acum.']
         st.dataframe(_rank, use_container_width=True, hide_index=True)
 
+# ─── Modal: R$/ha por Cliente × Ano ─────────────────────────────
+@st.dialog("🌡️ R$/ha por Cliente × Ano", width="large")
+def _dlg_rpha():
+    _base = df[df['is_silagem'] & (df['hectares'] > 0)].copy()
+    if _base.empty:
+        st.warning("Nenhum dado de silagem encontrado no período filtrado.")
+        return
+
+    # Pivot: cliente × ano → ticket médio (fat/ha por venda, depois média)
+    _v = _base.groupby(['num_venda','cliente','ano']).agg(
+        fat=('valor_bruto','sum'), ha=('hectares','sum')).reset_index()
+    _v = _v[_v['ha'] > 0]
+    _v['rpha'] = _v['fat'] / _v['ha']
+    _pivot_raw = _v.groupby(['cliente','ano'])['rpha'].mean().reset_index()
+    _pivot = _pivot_raw.pivot(index='cliente', columns='ano', values='rpha')
+
+    # Ordena clientes por média geral (maior → menor)
+    _pivot['_media'] = _pivot.mean(axis=1)
+    _pivot = _pivot.sort_values('_media', ascending=False).drop(columns='_media')
+
+    anos = [str(a) for a in sorted(_pivot.columns.tolist())]
+    clientes = _pivot.index.tolist()
+    z = _pivot.values.tolist()
+
+    # ── Heatmap ──
+    section("Mapa de Calor — R$/ha por Cliente e Ano")
+    fig = go.Figure(go.Heatmap(
+        z=z,
+        x=anos,
+        y=clientes,
+        colorscale=[
+            [0.0,  "#E8F5E9"],
+            [0.25, "#A5D6A7"],
+            [0.5,  "#4CAF50"],
+            [0.75, "#2E7D32"],
+            [1.0,  "#1B5E20"],
+        ],
+        hoverongaps=False,
+        hovertemplate="<b>%{y}</b><br>Ano: %{x}<br>R$/ha: R$ %{z:,.0f}<extra></extra>",
+        text=[[f"R$ {v:,.0f}".replace(",","X").replace(".",",").replace("X",".")
+               if not np.isnan(v) else "—"
+               for v in row] for row in z],
+        texttemplate="%{text}",
+        textfont=dict(size=10, color="white"),
+        showscale=True,
+        colorbar=dict(title="R$/ha", tickformat=",.0f"),
+    ))
+    h = max(320, len(clientes) * 32)
+    fig.update_layout(
+        height=h,
+        margin=dict(l=10, r=10, t=10, b=10),
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#F7FBF7",
+        font=dict(size=11, family="Arial, sans-serif"),
+        xaxis=dict(side="top", tickfont=dict(size=12, color="#1B5E20"), title=""),
+        yaxis=dict(tickfont=dict(size=11), title="", autorange="reversed"),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ── Tabela pivot com valores formatados ──
+    section("Tabela de Valores — R$/ha")
+    _tbl = _pivot.copy()
+    for col in _tbl.columns:
+        _tbl[col] = _tbl[col].apply(
+            lambda v: f"R$ {v:,.0f}".replace(",","X").replace(".",",").replace("X",".")
+            if not np.isnan(v) else "—")
+    _tbl.index.name = "Cliente"
+    _tbl.columns = [str(c) for c in _tbl.columns]
+    st.dataframe(_tbl, use_container_width=True)
+
+    # ── Destaques ──
+    _melhor = _pivot_raw.loc[_pivot_raw['rpha'].idxmax()]
+    _pior   = _pivot_raw.loc[_pivot_raw['rpha'].idxmin()]
+    c1_, c2_ = st.columns(2)
+    with c1_:
+        st.success(f"**Maior R$/ha:** {_melhor['cliente']} em {int(_melhor['ano'])} — "
+                   f"R$ {_melhor['rpha']:,.0f}".replace(",","X").replace(".",",").replace("X","."))
+    with c2_:
+        st.info(f"**Menor R$/ha:** {_pior['cliente']} em {int(_pior['ano'])} — "
+                f"R$ {_pior['rpha']:,.0f}".replace(",","X").replace(".",",").replace("X","."))
+
+
 # ─── KPI Cards (botões que abrem modal) ──────────────────────────
 c1,c2,c3,c4,c5,c6 = st.columns(6)
 with c1:
@@ -916,6 +1004,12 @@ with c6:
     if st.button(f"CONCENTRAÇÃO TOP 5\n{conc5_pct:.1f}%\n{_lbl_conc}",
                  key="kb_conc", use_container_width=True):
         _dlg_conc()
+
+# ─── Botão R$/ha por Cliente/Ano ─────────────────────────────────
+_c_rpha = st.columns([1, 2, 1])
+with _c_rpha[1]:
+    if st.button("🌡️ Ver R$/ha por Cliente × Ano", key="kb_rpha", use_container_width=True):
+        _dlg_rpha()
 
 # ─── Alerta de concentração ──────────────────────────────────────
 if conc5_pct > 60:
