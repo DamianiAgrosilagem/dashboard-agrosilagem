@@ -184,6 +184,33 @@ st.markdown("""
         display: inline-block; padding: 3px 10px; border-radius: 12px;
         font-size: 0.8rem; font-weight: 600; margin: 2px;
     }
+    /* Cards dos gráficos */
+    [data-testid="stPlotlyChart"] {
+        background: #FFFFFF;
+        border-radius: 14px;
+        box-shadow: 0 3px 16px rgba(27,94,32,0.10), 0 1px 4px rgba(0,0,0,0.06);
+        border: 1px solid #E8F5E9;
+        padding: 6px 4px 2px 4px;
+        margin-bottom: 8px;
+    }
+    /* Cards das tabelas */
+    [data-testid="stDataFrame"] {
+        background: #FFFFFF;
+        border-radius: 12px;
+        box-shadow: 0 3px 16px rgba(27,94,32,0.08), 0 1px 4px rgba(0,0,0,0.05);
+        border: 1px solid #E8F5E9;
+        padding: 4px;
+        margin-bottom: 8px;
+    }
+    /* Seção com fundo suave */
+    .section-bg {
+        background: #F7FBF7;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+        border: 1px solid #E8F5E9;
+    }
+
     @media (max-width: 768px) {
         [data-testid="column"] { width:100%!important; flex:1 1 100%!important; min-width:100%!important; }
         .kpi-card .kpi-value { font-size: 1.3rem; }
@@ -457,12 +484,29 @@ def section(title):
     st.markdown(f'<div class="section-title">{title}</div>', unsafe_allow_html=True)
 
 def layout_mobile(fig, height=380, margin_b=60, font_size=13):
-    fig.update_layout(height=height, margin=dict(l=8,r=8,t=36,b=margin_b),
-        font=dict(size=font_size,family="Arial, sans-serif"),
-        plot_bgcolor="white", paper_bgcolor="white",
-        legend=dict(orientation="h",y=-0.22,x=0,font=dict(size=11)))
-    fig.update_xaxes(tickfont=dict(size=11),title_font=dict(size=12))
-    fig.update_yaxes(tickfont=dict(size=11),title_font=dict(size=12))
+    fig.update_layout(
+        height=height,
+        margin=dict(l=12, r=12, t=42, b=margin_b),
+        font=dict(size=font_size, family="Arial, sans-serif"),
+        plot_bgcolor="#F7FBF7",
+        paper_bgcolor="#FFFFFF",
+        legend=dict(orientation="h", y=-0.22, x=0, font=dict(size=11)),
+        title_font=dict(size=14, color="#1B5E20"),
+    )
+    fig.update_xaxes(
+        tickfont=dict(size=11, color="#37474F"),
+        title_font=dict(size=12, color="#37474F"),
+        gridcolor="#E0EDE0",
+        linecolor="#C8DFC8",
+        showgrid=True,
+    )
+    fig.update_yaxes(
+        tickfont=dict(size=11, color="#37474F"),
+        title_font=dict(size=12, color="#37474F"),
+        gridcolor="#E0EDE0",
+        linecolor="#C8DFC8",
+        showgrid=True,
+    )
     return fig
 
 SAFRA_ORDER = [
