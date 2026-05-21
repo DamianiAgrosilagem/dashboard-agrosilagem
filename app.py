@@ -705,6 +705,7 @@ function applyKPI() {
   try {
     const doc = window.parent.document;
     doc.querySelectorAll('button').forEach(btn => {
+      if (btn.getAttribute('role') === 'tab') return;
       const txt = (btn.innerText || '').trim().toUpperCase();
       for (const [prefix, grad] of GRADS) {
         if (txt.startsWith(prefix)) {
