@@ -131,6 +131,7 @@ st.markdown("""
         font-weight: 600 !important;
         padding: 8px 14px !important;
         margin-right: 2px !important;
+        white-space: nowrap !important;
     }
     [data-baseweb="tab"]:hover {
         background: #c8e6c9 !important;
@@ -507,7 +508,6 @@ def layout_mobile(fig, height=380, margin_b=60, font_size=13):
         plot_bgcolor="#F7FBF7",
         paper_bgcolor="#FFFFFF",
         legend=dict(orientation="h", y=-0.22, x=0, font=dict(size=11)),
-        title_font=dict(size=14, color="#1B5E20"),
     )
     fig.update_xaxes(
         tickfont=dict(size=11, color="#37474F"),
