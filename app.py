@@ -500,6 +500,20 @@ def kpi(label, value, cls="", delta=""):
 def section(title):
     st.markdown(f'<div class="section-title">{title}</div>', unsafe_allow_html=True)
 
+_PLOT_CONFIG = {
+    'scrollZoom': False,
+    'displayModeBar': False,
+    'staticPlot': False,
+    'doubleClick': False,
+}
+
+def plot(fig, height=None):
+    """Wrapper de st.plotly_chart com interatividade desabilitada."""
+    kw = {'use_container_width': True, 'config': _PLOT_CONFIG}
+    if height:
+        kw['height'] = height
+    st.plotly_chart(fig, **kw)
+
 def layout_mobile(fig, height=380, margin_b=60, font_size=13):
     fig.update_layout(
         height=height,
@@ -508,6 +522,7 @@ def layout_mobile(fig, height=380, margin_b=60, font_size=13):
         plot_bgcolor="#F7FBF7",
         paper_bgcolor="#FFFFFF",
         legend=dict(orientation="h", y=-0.22, x=0, font=dict(size=11)),
+        dragmode=False,
     )
     fig.update_xaxes(
         tickfont=dict(size=11, color="#37474F"),
@@ -746,7 +761,7 @@ def _dlg_fat():
         fig.update_traces(textposition='outside')
         layout_mobile(fig, 300, 80)
         fig.update_layout(showlegend=False, xaxis_title="", yaxis=dict(showticklabels=False))
-        st.plotly_chart(fig, use_container_width=True)
+        plot(fig)
     with col_b:
         section("Por Safra")
         _saf = df.groupby('safra')['valor_bruto'].sum().sort_values(ascending=False).reset_index()
@@ -756,7 +771,7 @@ def _dlg_fat():
         fig2.update_traces(textposition='outside')
         layout_mobile(fig2, 300, 100)
         fig2.update_layout(showlegend=False, xaxis_title="", yaxis=dict(showticklabels=False))
-        st.plotly_chart(fig2, use_container_width=True)
+        plot(fig2)
     section("Top 10 Clientes")
     _top = cli_df.head(10)[['rank','cliente','faturamento','num_vendas','cidade']].copy()
     _top['faturamento'] = _top['faturamento'].apply(fmt_brl)
@@ -779,7 +794,7 @@ def _dlg_liq():
         fig.update_layout(barmode='group')
         layout_mobile(fig, 320, 80)
         fig.update_layout(xaxis_title="", yaxis=dict(showticklabels=False))
-        st.plotly_chart(fig, use_container_width=True)
+        plot(fig)
     with col_b:
         section("Desconto (%) por Categoria")
         _d = df.groupby('categoria').agg(b=('valor_bruto','sum'), l=('valor_liquido','sum')).reset_index()
@@ -791,7 +806,7 @@ def _dlg_liq():
         fig3.update_traces(textposition='outside')
         layout_mobile(fig3, 320, 80)
         fig3.update_layout(showlegend=False, xaxis_title="", yaxis_title="Desconto (%)")
-        st.plotly_chart(fig3, use_container_width=True)
+        plot(fig3)
     _desc = fat_total - liq_total
     st.info(f"**Desconto total:** {fmt_brl(_desc)} ({_desc/fat_total*100:.1f}% sobre o bruto)" if fat_total else "")
 
@@ -811,7 +826,7 @@ def _dlg_tkt():
         fig.update_traces(textposition='outside')
         layout_mobile(fig, 300, 100)
         fig.update_layout(showlegend=False, xaxis_title="", yaxis=dict(showticklabels=False))
-        st.plotly_chart(fig, use_container_width=True)
+        plot(fig)
     with col_b:
         section("Top 10 Clientes — Ticket/ha")
         _ct = cli_df[cli_df['hectares'] > 0].head(10)[
@@ -835,7 +850,7 @@ def _dlg_ha():
         fig.update_traces(textposition='outside')
         layout_mobile(fig, 300, 100)
         fig.update_layout(showlegend=False, xaxis_title="", yaxis=dict(showticklabels=False))
-        st.plotly_chart(fig, use_container_width=True)
+        plot(fig)
     with col_b:
         section("Top 10 Clientes — Hectares")
         _ch = cli_df[cli_df['hectares'] > 0].head(10)[
@@ -859,7 +874,7 @@ def _dlg_cli():
         layout_mobile(fig, 420, 10)
         fig.update_layout(showlegend=False, xaxis=dict(showticklabels=False),
                           xaxis_title="", yaxis_title="")
-        st.plotly_chart(fig, use_container_width=True)
+        plot(fig)
     with col_b:
         section("Por Nº de Vendas")
         _nv = cli_df.sort_values('num_vendas', ascending=False).head(15)[
@@ -889,7 +904,7 @@ def _dlg_conc():
         fig.update_traces(textinfo='label+percent', textposition='inside')
         layout_mobile(fig, 320, 10)
         fig.update_layout(showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+        plot(fig)
     with col_b:
         section("Ranking com % Acumulado")
         _rank = cli_df[['rank','cliente','faturamento']].copy()
@@ -972,7 +987,7 @@ def _dlg_rpha():
         yaxis_title="R$/ha",
         yaxis=dict(showticklabels=True),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    plot(fig)
 
     # ── KPIs do cliente ──
     k1, k2, k3, k4 = st.columns(4)
@@ -1053,7 +1068,7 @@ with tab_visao:
         layout_mobile(fig, 340, 10)
         fig.update_layout(showlegend=False, xaxis=dict(showticklabels=False, showgrid=False),
                           xaxis_title="", yaxis_title="")
-        st.plotly_chart(fig, use_container_width=True)
+        plot(fig)
     with col_r:
         section("Distribuição por Categoria")
         fig2 = px.pie(cat_df, values='valor_bruto', names='categoria',
@@ -1062,7 +1077,7 @@ with tab_visao:
                            textfont_size=12, insidetextorientation='radial')
         layout_mobile(fig2, 340, 10)
         fig2.update_layout(showlegend=False)
-        st.plotly_chart(fig2, use_container_width=True)
+        plot(fig2)
 
     section("Faturamento Bruto vs Líquido por Categoria")
     bvsl = df.groupby('categoria').agg(bruto=('valor_bruto','sum'), liquido=('valor_liquido','sum')).sort_values('bruto',ascending=False).reset_index()
@@ -1075,7 +1090,7 @@ with tab_visao:
                           textposition='outside', textfont_size=10))
     layout_mobile(fig3, 360, 60)
     fig3.update_layout(barmode='group', xaxis_title="", yaxis_title="R$")
-    st.plotly_chart(fig3, use_container_width=True)
+    plot(fig3)
 
 # ───────────────────────────────────────────────────────────────────
 # ABA 2 — CLIENTES
@@ -1094,7 +1109,7 @@ with tab_clientes:
         layout_mobile(fig, max(380, n_top*24), 10)
         fig.update_layout(showlegend=False, coloraxis_showscale=False,
                           xaxis=dict(showticklabels=False, showgrid=False), yaxis_title="", xaxis_title="")
-        st.plotly_chart(fig, use_container_width=True)
+        plot(fig)
     with col_r:
         section("Ticket Médio/ha (Top 15)")
         tm = cli_df[cli_df['hectares']>0].head(15).sort_values('ticket_medio_ha')
@@ -1105,7 +1120,7 @@ with tab_clientes:
         layout_mobile(fig2, 400, 10)
         fig2.update_layout(showlegend=False, coloraxis_showscale=False,
                            xaxis=dict(showticklabels=False, showgrid=False), yaxis_title="", xaxis_title="")
-        st.plotly_chart(fig2, use_container_width=True)
+        plot(fig2)
 
     # ── DRILL-DOWN de cliente ──
     section("🔍 Detalhamento por Cliente")
@@ -1134,7 +1149,7 @@ with tab_clientes:
             layout_mobile(fig_dc, 320, 80)
             fig_dc.update_layout(showlegend=False, xaxis_title="", yaxis_title="R$")
             fig_dc.update_xaxes(tickangle=35)
-            st.plotly_chart(fig_dc, use_container_width=True)
+            plot(fig_dc)
         with col_b:
             section("Hectares por Safra")
             fig_dc2 = px.bar(dc_safra, x='safra', y='ha', color='safra',
@@ -1144,7 +1159,7 @@ with tab_clientes:
             layout_mobile(fig_dc2, 320, 80)
             fig_dc2.update_layout(showlegend=False, xaxis_title="", yaxis_title="Hectares")
             fig_dc2.update_xaxes(tickangle=35)
-            st.plotly_chart(fig_dc2, use_container_width=True)
+            plot(fig_dc2)
 
         section("Produtos utilizados")
         dc_prod = dc.groupby('categoria')['valor_bruto'].sum().sort_values(ascending=False).reset_index()
@@ -1165,7 +1180,7 @@ with tab_clientes:
     fig_b.update_traces(textposition='top center', textfont_size=9)
     layout_mobile(fig_b, 460, 60)
     fig_b.update_layout(coloraxis_colorbar_title="Ticket/ha")
-    st.plotly_chart(fig_b, use_container_width=True)
+    plot(fig_b)
 
     section("Tabela de Clientes")
     cs = top_cli.copy()
@@ -1199,7 +1214,7 @@ with tab_produtos:
         layout_mobile(fig, 440, 10)
         fig.update_layout(showlegend=False, coloraxis_showscale=False,
                           xaxis=dict(showticklabels=False, showgrid=False), yaxis_title="", xaxis_title="")
-        st.plotly_chart(fig, use_container_width=True)
+        plot(fig)
     with col_r:
         section("Top 15 Produtos por Volume")
         t15q = prod_df.sort_values('quantidade', ascending=False).head(15).sort_values('quantidade')
@@ -1210,7 +1225,7 @@ with tab_produtos:
         layout_mobile(fig2, 440, 10)
         fig2.update_layout(showlegend=False, coloraxis_showscale=False,
                            xaxis=dict(showticklabels=False, showgrid=False), yaxis_title="", xaxis_title="")
-        st.plotly_chart(fig2, use_container_width=True)
+        plot(fig2)
 
     section("Detalhe — Corte de Silagem por Equipamento")
     sil = df[df['is_silagem']].groupby('produto').agg(
@@ -1227,7 +1242,7 @@ with tab_produtos:
     layout_mobile(fig3, 420, 100)
     fig3.update_layout(showlegend=False)
     fig3.update_xaxes(tickangle=35, tickfont=dict(size=10))
-    st.plotly_chart(fig3, use_container_width=True)
+    plot(fig3)
 
 # ───────────────────────────────────────────────────────────────────
 # ABA 4 — CIDADES (tabela)
@@ -1250,7 +1265,7 @@ with tab_geo:
         layout_mobile(fig, max(380,n_cid*24), 10)
         fig.update_layout(showlegend=False, coloraxis_showscale=False,
                           xaxis=dict(showticklabels=False, showgrid=False), yaxis_title="", xaxis_title="")
-        st.plotly_chart(fig, use_container_width=True)
+        plot(fig)
     with col_r:
         section("Clientes por Cidade (Top 20)")
         tc2 = cid_df.sort_values('clientes', ascending=False).head(20).sort_values('clientes')
@@ -1261,7 +1276,7 @@ with tab_geo:
         layout_mobile(fig2, 500, 10)
         fig2.update_layout(showlegend=False, coloraxis_showscale=False,
                            xaxis=dict(showticklabels=False, showgrid=False), yaxis_title="", xaxis_title="")
-        st.plotly_chart(fig2, use_container_width=True)
+        plot(fig2)
 
     section("Tabela de Cidades")
     cs2 = cid_df.head(n_cid).copy()
@@ -1304,7 +1319,7 @@ with tab_mapa:
         coloraxis_colorbar_title="Faturamento (R$)",
         coloraxis_showscale=False
     )
-    st.plotly_chart(fig_map, use_container_width=True)
+    plot(fig_map)
 
     col_l, col_r = st.columns(2)
     with col_l:
@@ -1340,7 +1355,7 @@ with tab_temporal:
     layout_mobile(fig, 420, 80)
     fig.update_layout(barmode='overlay', xaxis_title="Mês/Ano", yaxis_title="R$")
     fig.update_xaxes(tickangle=45, tickfont=dict(size=10))
-    st.plotly_chart(fig, use_container_width=True)
+    plot(fig)
 
     col_l, col_r = st.columns(2)
     with col_l:
@@ -1350,7 +1365,7 @@ with tab_temporal:
                        labels={'hectares':'Hectares','ano_mes':''})
         layout_mobile(fig2, 320, 70)
         fig2.update_xaxes(tickangle=45, tickfont=dict(size=10))
-        st.plotly_chart(fig2, use_container_width=True)
+        plot(fig2)
     with col_r:
         section("Clientes Ativos por Mês")
         fig3 = px.line(mensal, x='ano_mes', y='clientes',
@@ -1358,7 +1373,7 @@ with tab_temporal:
                        labels={'clientes':'Clientes Ativos','ano_mes':''})
         layout_mobile(fig3, 320, 70)
         fig3.update_xaxes(tickangle=45, tickfont=dict(size=10))
-        st.plotly_chart(fig3, use_container_width=True)
+        plot(fig3)
 
 # ───────────────────────────────────────────────────────────────────
 # ABA 7 — SAFRAS + COMPARATIVO
@@ -1383,7 +1398,7 @@ with tab_safras:
         layout_mobile(fig, 420, 110)
         fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="Hectares")
         fig.update_xaxes(tickangle=35, tickfont=dict(size=10))
-        st.plotly_chart(fig, use_container_width=True)
+        plot(fig)
     with col_r:
         section("Receita/ha por Safra")
         fig2 = px.bar(safra_df_fil, x='safra', y='receita_ha', color='safra',
@@ -1393,7 +1408,7 @@ with tab_safras:
         layout_mobile(fig2, 420, 110)
         fig2.update_layout(showlegend=False, xaxis_title="", yaxis_title="R$/ha")
         fig2.update_xaxes(tickangle=35, tickfont=dict(size=10))
-        st.plotly_chart(fig2, use_container_width=True)
+        plot(fig2)
 
     # Comparativo entre safras consecutivas
     section("📊 Comparativo entre Safras")
@@ -1438,7 +1453,7 @@ with tab_safras:
         fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0,1])),
                                  height=380, margin=dict(l=40,r=40,t=40,b=40),
                                  legend=dict(orientation='h',y=-0.1))
-        st.plotly_chart(fig_radar, use_container_width=True)
+        plot(fig_radar)
 
     section("Resumo por Safra")
     ss = safra_df.copy()
@@ -1474,7 +1489,7 @@ with tab_sazonalidade:
                                         showarrow=False, font=dict(size=10, color='white' if val > saz_pivot.values.max()*0.5 else '#1B5E20'))
     layout_mobile(fig_heat, 340, 40)
     fig_heat.update_layout(coloraxis_showscale=False)
-    st.plotly_chart(fig_heat, use_container_width=True)
+    plot(fig_heat)
 
     section("Hectares por Mês e Ano")
     saz_ha = df[df['is_silagem']].groupby(['ano','mes'])['hectares'].sum().reset_index()
@@ -1484,7 +1499,7 @@ with tab_sazonalidade:
                            labels={'x':'Mês','y':'Ano','color':'Hectares'})
     layout_mobile(fig_heat2, 320, 40)
     fig_heat2.update_layout(coloraxis_showscale=True, coloraxis_colorbar_title="ha")
-    st.plotly_chart(fig_heat2, use_container_width=True)
+    plot(fig_heat2)
 
     section("Meses com Maior Faturamento (histórico)")
     saz_mes = df.groupby('mes')['valor_bruto'].sum().reset_index()
@@ -1496,7 +1511,7 @@ with tab_sazonalidade:
     layout_mobile(fig_mes, 340, 40)
     fig_mes.update_layout(showlegend=False, coloraxis_showscale=False,
                           xaxis_title="Mês", yaxis_title="R$")
-    st.plotly_chart(fig_mes, use_container_width=True)
+    plot(fig_mes)
 
 # ───────────────────────────────────────────────────────────────────
 # ABA 9 — FIDELIDADE
@@ -1522,7 +1537,7 @@ with tab_fidelidade:
         fig.update_traces(textinfo='label+percent+value', textfont_size=12)
         layout_mobile(fig, 340, 20)
         fig.update_layout(showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+        plot(fig)
     with col_r:
         section("Faturamento por Nível de Fidelidade")
         fig2 = px.bar(fid_grupo, x='categoria_fidelidade', y='faturamento',
@@ -1532,7 +1547,7 @@ with tab_fidelidade:
         fig2.update_traces(textposition='outside', textfont_size=11)
         layout_mobile(fig2, 340, 60)
         fig2.update_layout(showlegend=False, xaxis_title="", yaxis_title="R$")
-        st.plotly_chart(fig2, use_container_width=True)
+        plot(fig2)
 
     section("Clientes Fiéis (4+ safras)")
     fieis = fid[fid['num_safras']>=4].sort_values('faturamento', ascending=False)
@@ -1603,7 +1618,7 @@ with tab_projecao:
             layout_mobile(fig, max(400, len(proj_show)*24), 10)
             fig.update_layout(coloraxis_colorbar_title="Fat. Proj. (R$)",
                               xaxis_title="Hectares Projetados", yaxis_title="")
-            st.plotly_chart(fig, use_container_width=True)
+            plot(fig)
 
             proj_show['ha_proj']  = proj_show['ha_proj'].apply(lambda v: fmt_num(v,1))
             proj_show['fat_proj'] = proj_show['fat_proj'].apply(fmt_brl)
@@ -1765,7 +1780,7 @@ with tab_resumo:
         layout_mobile(fig, 260, 60, 11)
         fig.update_xaxes(tickangle=45, tickfont=dict(size=9))
         fig.update_layout(xaxis_title="", yaxis_title="R$", showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+        plot(fig)
     with col_r:
         section("Top 10 Clientes")
         top10r = cli_df.head(10).sort_values('faturamento')
@@ -1774,7 +1789,7 @@ with tab_resumo:
         layout_mobile(fig2, 260, 10, 10)
         fig2.update_layout(showlegend=False, coloraxis_showscale=False,
                            xaxis=dict(showticklabels=False), yaxis_title="", xaxis_title="")
-        st.plotly_chart(fig2, use_container_width=True)
+        plot(fig2)
 
     st.markdown("---")
     st.caption(f"Agrosilagem © 2024–2026 | Dashboard gerado automaticamente | Base: {len(df_raw):,} registros")
