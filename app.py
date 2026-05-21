@@ -562,15 +562,12 @@ df_raw['mes'] = df_raw['data_venda'].dt.month
 # ═══════════════════════════════════════════════════════════════════
 # SIDEBAR — FILTROS
 # ═══════════════════════════════════════════════════════════════════
+_min_date = df_raw['data_venda'].min().date()
+_max_date = df_raw['data_venda'].max().date()
+
 with st.sidebar:
     st.markdown("## 🌾 Agrosilagem")
     st.markdown("### Filtros")
-
-    min_date = df_raw['data_venda'].min().date()
-    max_date = df_raw['data_venda'].max().date()
-    c1, c2 = st.columns(2)
-    with c1: dt_inicio = st.date_input("De",  value=min_date, min_value=min_date, max_value=max_date, format="DD/MM/YYYY")
-    with c2: dt_fim    = st.date_input("Até", value=max_date, min_value=min_date, max_value=max_date, format="DD/MM/YYYY")
 
     safra_sel   = st.multiselect("Safra",     sorted(df_raw['safra'].dropna().unique()),     default=[], placeholder="Todas as safras")
     cat_sel     = st.multiselect("Categoria", sorted(df_raw['categoria'].dropna().unique()), default=[], placeholder="Todas as categorias")
@@ -648,6 +645,31 @@ if modo_escuro:
         div[data-testid="stDataFrame"] { background: #1E1E1E !important; }
     </style>""", unsafe_allow_html=True)
 
+
+# ═══════════════════════════════════════════════════════════════════
+# CABEÇALHO
+# ═══════════════════════════════════════════════════════════════════
+st.markdown("""
+<div class="main-header">
+    <div style="font-size:2.2rem">🌾</div>
+    <div>
+        <h1>Dashboard Comercial & Financeiro</h1>
+        <p>AGROSILAGEM SERVICOS AGROPECUARIOS E TRANSPORTES LTDA &nbsp;|&nbsp; Análise de vendas e safras</p>
+    </div>
+</div>""", unsafe_allow_html=True)
+
+# ─── Seletor de período inline ────────────────────────────────────
+_dc1, _dc2, _dc3 = st.columns([2, 2, 4])
+with _dc1:
+    dt_inicio = st.date_input("📅 De", value=_min_date, min_value=_min_date,
+                               max_value=_max_date, format="DD/MM/YYYY", key="dt_de")
+with _dc2:
+    dt_fim = st.date_input("Até", value=_max_date, min_value=_min_date,
+                            max_value=_max_date, format="DD/MM/YYYY", key="dt_ate")
+with _dc3:
+    st.caption(f"&nbsp;")
+    st.caption(f"{len(df_raw):,} registros &nbsp;|&nbsp; {df_raw['num_venda'].nunique():,} vendas")
+
 # ═══════════════════════════════════════════════════════════════════
 # FILTROS APLICADOS
 # ═══════════════════════════════════════════════════════════════════
@@ -688,21 +710,6 @@ cli_df['rank'] = range(1, len(cli_df)+1)
 fat_top5  = cli_df.head(5)['faturamento'].sum()
 fat_top10 = cli_df.head(10)['faturamento'].sum()
 conc5_pct = fat_top5 / fat_total * 100 if fat_total > 0 else 0
-
-# ═══════════════════════════════════════════════════════════════════
-# CABEÇALHO
-# ═══════════════════════════════════════════════════════════════════
-st.markdown("""
-<div class="main-header">
-    <div style="font-size:2.2rem">🌾</div>
-    <div>
-        <h1>Dashboard Comercial & Financeiro</h1>
-        <p>AGROSILAGEM SERVICOS AGROPECUARIOS E TRANSPORTES LTDA &nbsp;|&nbsp; Análise de vendas e safras</p>
-    </div>
-</div>""", unsafe_allow_html=True)
-
-periodo_str = f"{dt_inicio.strftime('%d/%m/%Y')} — {dt_fim.strftime('%d/%m/%Y')}"
-st.caption(f"📅 Período: **{periodo_str}** &nbsp;|&nbsp; {len(df):,} registros | {num_vendas:,} vendas realizadas")
 
 # ─── JavaScript: estiliza KPI cards dinamicamente ────────────────
 stc.html("""
