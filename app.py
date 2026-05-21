@@ -188,6 +188,7 @@ st.markdown("""
     [data-testid="stPlotlyChart"] {
         background: #FFFFFF;
         border-radius: 14px;
+        overflow: hidden;
         box-shadow: 0 3px 16px rgba(27,94,32,0.10), 0 1px 4px rgba(0,0,0,0.06);
         border: 1px solid #E8F5E9;
         padding: 6px 4px 2px 4px;
@@ -197,10 +198,19 @@ st.markdown("""
     [data-testid="stDataFrame"] {
         background: #FFFFFF;
         border-radius: 12px;
+        overflow: hidden;
         box-shadow: 0 3px 16px rgba(27,94,32,0.08), 0 1px 4px rgba(0,0,0,0.05);
         border: 1px solid #E8F5E9;
         padding: 4px;
         margin-bottom: 8px;
+    }
+    /* Ocultar iframe invisível do componente JS */
+    [data-testid="stCustomComponentV1"] {
+        display: none !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
     /* Seção com fundo suave */
     .section-bg {
