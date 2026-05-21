@@ -699,6 +699,7 @@ const GRADS = [
   ['TOTAL HECTARES',     'linear-gradient(135deg,#6A1B9A,#4A148C)'],
   ['CLIENTES ATIVOS',    'linear-gradient(135deg,#00838F,#006064)'],
   ['CONCENTRAÇÃO',       'linear-gradient(135deg,#C62828,#B71C1C)'],
+  ['📈',                 'linear-gradient(135deg,#004D40,#00695C)'],
 ];
 function applyKPI() {
   try {
