@@ -399,6 +399,7 @@ def import_conta_azul(uploaded_file, merge=True):
                          'pedido','venda','num. venda','cod. venda','código','codigo'],
         'data_venda':   ['data da venda','data','emissão','emissao','data de emissão',
                          'data emissão','data emissao','data venda'],
+        'situacao':     ['situação','situacao','status','estado','status da venda'],
         'cliente':      ['cliente','nome','razão social','razao social','nome do cliente',
                          'comprador','destinatário','destinatario'],
         'cidade':       ['cidade do cliente','cidade','município','municipio','local','localidade'],
@@ -450,6 +451,17 @@ def import_conta_azul(uploaded_file, merge=True):
     out['valor_bruto']  = out['valor_bruto'].apply(parse_br_number)
     out['valor_liquido']= out['valor_liquido'].apply(parse_br_number)
 
+    # Filtra vendas canceladas — inclui apenas Faturada/Paga/Emitida
+    SITUACOES_VALIDAS = {'faturada','pago','paga','emitida','concluída','concluida',
+                         'aprovada','ativa','finalizada','liquidada'}
+    n_total = len(out)
+    if 'situacao' in out.columns:
+        sit = out['situacao'].fillna('').str.strip().str.lower()
+        mask_valida = sit.apply(lambda s: any(v in s for v in SITUACOES_VALIDAS) or s == '')
+        n_canceladas = (~mask_valida).sum()
+        out = out[mask_valida].copy()
+        if n_canceladas > 0:
+            st.info(f"ℹ️ {n_canceladas} registro(s) ignorado(s) por situação inválida (ex: Cancelada).")
     out = out[out['data_venda'].notna() & (out['valor_bruto'] > 0)].copy()
     if out.empty:
         return None, "Nenhum registro válido encontrado após processamento."
@@ -612,23 +624,44 @@ with st.sidebar:
             else:
                 min_d = df_imp['data_venda'].min().strftime('%d/%m/%Y')
                 max_d = df_imp['data_venda'].max().strftime('%d/%m/%Y')
-                st.success(f"✅ {len(df_imp):,} registros importados")
+                n_vendas = df_imp['num_venda'].nunique()
+                fat_bruto = df_imp['valor_bruto'].sum()
+                fat_liq   = df_imp['valor_liquido'].sum()
+                st.success(f"✅ {len(df_imp):,} linhas importadas ({n_vendas:,} vendas únicas)")
                 st.caption(f"Período: {min_d} → {max_d}")
+                st.markdown("**Totais calculados — compare com o Conta Azul:**")
+                c1, c2 = st.columns(2)
+                c1.metric("Faturamento Bruto", fmt_brl(fat_bruto))
+                c2.metric("Receita Líquida",   fmt_brl(fat_liq))
 
-                # Salva na sessão — carregado automaticamente no próximo rerun
-                st.session_state['df_override'] = df_imp
-
-                # Download para atualização permanente via git
+                # Tenta gravar no disco (funciona localmente; falha silenciosamente no Cloud)
+                salvo_disco = False
                 buf = io.BytesIO()
                 df_imp.to_csv(buf, index=False, compression='gzip')
-                st.download_button(
-                    "⬇️ Baixar base atualizada (permanente)",
-                    data=buf.getvalue(),
-                    file_name="vendas.csv.gz",
-                    mime="application/gzip",
-                    key="btn_download_csv"
-                )
-                st.caption("💡 Para tornar permanente: baixe → substitua data/vendas.csv.gz → git push")
+                csv_bytes = buf.getvalue()
+                try:
+                    VENDAS_FILE.parent.mkdir(parents=True, exist_ok=True)
+                    VENDAS_FILE.write_bytes(csv_bytes)
+                    salvo_disco = True
+                except Exception:
+                    pass
+
+                # Salva também na sessão para uso imediato
+                st.session_state['df_override'] = df_imp
+
+                if salvo_disco:
+                    st.success("💾 Base gravada — dados persistem mesmo após recarregar a página.")
+                else:
+                    # Streamlit Cloud: disco somente-leitura → precisa baixar e enviar ao git
+                    st.warning("⚠️ Não foi possível gravar no disco (ambiente Cloud). "
+                               "Baixe o arquivo abaixo e substitua `data/vendas.csv.gz` no repositório.")
+                    st.download_button(
+                        "⬇️ Baixar base atualizada",
+                        data=csv_bytes,
+                        file_name="vendas.csv.gz",
+                        mime="application/gzip",
+                        key="btn_download_csv"
+                    )
 
                 if st.button("🔄 Aplicar no Dashboard", key="btn_reload_imp"):
                     st.rerun()
@@ -822,11 +855,14 @@ def _dlg_tkt():
     col_a, col_b = st.columns(2)
     with col_a:
         section("Ticket Médio por Safra")
-        _s = df[df['is_silagem']].groupby(['num_venda','safra']).agg(
-            fat=('valor_bruto','sum'), ha=('hectares','sum')).reset_index()
-        _s = _s[_s['ha'] > 0]
-        _sg = _s.groupby('safra').apply(lambda x: (x['fat']/x['ha']).mean()).reset_index()
-        _sg.columns = ['safra','ticket']
+        # Hectares somente de itens de silagem; faturamento = total da venda (todos os itens)
+        _ha = df[df['is_silagem']].groupby(['num_venda','safra']).agg(
+            ha=('hectares','sum')).reset_index()
+        _ha = _ha[_ha['ha'] > 0]
+        _fat = df.groupby('num_venda').agg(fat=('valor_bruto','sum')).reset_index()
+        _s = _ha.merge(_fat, on='num_venda', how='left')
+        _sg = _s.groupby('safra').agg(fat=('fat','sum'), ha=('ha','sum')).reset_index()
+        _sg['ticket'] = _sg['fat'] / _sg['ha']
         _sg = _sg.sort_values('ticket', ascending=False)
         fig = px.bar(_sg, x='safra', y='ticket', text=_sg['ticket'].apply(fmt_brl),
                      color='safra', color_discrete_sequence=PALETTE)
@@ -924,15 +960,18 @@ def _dlg_conc():
 # ─── Modal: R$/ha por Cliente × Ano ─────────────────────────────
 @st.dialog("📈 Ticket Médio por Safra — Cliente", width="large")
 def _dlg_rpha():
-    _base = df[df['is_silagem'] & (df['hectares'] > 0)].copy()
-    if _base.empty:
+    # Hectares somente de itens de silagem
+    _sil = df[df['is_silagem'] & (df['hectares'] > 0)].copy()
+    if _sil.empty:
         st.warning("Nenhum dado de silagem encontrado no período filtrado.")
         return
 
-    # Calcula ticket médio (R$/ha) por venda e depois agrega por cliente+safra
-    _v = _base.groupby(['num_venda','cliente','safra']).agg(
-        fat=('valor_bruto','sum'), ha=('hectares','sum')).reset_index()
-    _v = _v[_v['ha'] > 0]
+    # Agrupa hectares por venda (silagem) e busca faturamento total da venda (todos os itens)
+    _ha_v = _sil.groupby(['num_venda','cliente','safra']).agg(
+        ha=('hectares','sum')).reset_index()
+    _ha_v = _ha_v[_ha_v['ha'] > 0]
+    _fat_v = df.groupby('num_venda').agg(fat=('valor_bruto','sum')).reset_index()
+    _v = _ha_v.merge(_fat_v, on='num_venda', how='left')
     _v['rpha'] = _v['fat'] / _v['ha']
 
     clientes_com_ha = sorted(_v['cliente'].unique().tolist())
@@ -950,11 +989,11 @@ def _dlg_rpha():
         return
 
     _cli = _v[_v['cliente'] == cliente_sel].groupby('safra').agg(
-        ticket=('rpha','mean'),
         vendas=('num_venda','nunique'),
         ha_total=('ha','sum'),
         fat_total=('fat','sum'),
     ).reset_index()
+    _cli['ticket'] = _cli['fat_total'] / _cli['ha_total']
 
     # Ordena safras pela ordem cronológica definida
     _safra_cat = pd.Categorical(_cli['safra'], categories=SAFRA_ORDER, ordered=True)
