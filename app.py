@@ -73,73 +73,135 @@ CIDADES_COORDS = {
 # ─── CSS ─────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    [data-testid="stSidebar"] { background-color: #1B5E20; }
-    [data-testid="stSidebar"] * { color: #FFFFFF !important; }
+    /* ── Sidebar: fundo branco com acentos verdes ── */
+    [data-testid="stSidebar"] {
+        background-color: #FFFFFF;
+        border-right: 2px solid #C8E6C9;
+    }
+    [data-testid="stSidebar"] * { color: #1A2E1A !important; }
 
-    /* Campos de input na sidebar — fundo claro para legibilidade */
-    [data-testid="stSidebar"] input,
-    [data-testid="stSidebar"] .stDateInput input,
+    /* Cabeçalho da marca */
+    .sidebar-brand {
+        background: linear-gradient(135deg, #1B5E20, #2E7D32);
+        border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;
+        text-align: center;
+    }
+    .sidebar-brand h2 {
+        color: #FFFFFF !important; margin: 0; font-size: 1.2rem; font-weight: 700;
+    }
+    .sidebar-brand p {
+        color: rgba(255,255,255,0.8) !important; margin: 2px 0 0 0; font-size: 0.72rem;
+    }
+
+    /* Títulos de seção da sidebar */
+    .sidebar-section {
+        background: #E8F5E9; border-left: 3px solid #1B5E20;
+        border-radius: 0 6px 6px 0; padding: 5px 10px; margin: 14px 0 8px 0;
+    }
+    .sidebar-section span {
+        color: #1B5E20 !important; font-weight: 700 !important; font-size: 0.78rem !important;
+        text-transform: uppercase; letter-spacing: 0.6px;
+    }
+
+    /* Labels dos campos */
+    [data-testid="stSidebar"] label p,
+    [data-testid="stSidebar"] .stMarkdown p {
+        color: #2D4A2D !important; font-weight: 500 !important; font-size: 0.83rem !important;
+    }
+
+    /* Inputs e selects — fundo branco com borda verde */
+    [data-testid="stSidebar"] [data-baseweb="select"] > div,
     [data-testid="stSidebar"] [data-baseweb="input"] input,
-    [data-testid="stSidebar"] [data-baseweb="select"] div,
-    [data-testid="stSidebar"] [data-baseweb="tag"],
-    [data-testid="stSidebar"] [data-baseweb="popover"] {
-        background-color: rgba(255,255,255,0.15) !important;
-        color: #FFFFFF !important;
-        border-color: rgba(255,255,255,0.4) !important;
-    }
-    [data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="tag"] {
-        background-color: rgba(255,255,255,0.25) !important;
-        color: #FFFFFF !important;
-    }
-    /* Placeholder dos multiselects */
-    [data-testid="stSidebar"] [data-baseweb="select"] span {
-        color: rgba(255,255,255,0.7) !important;
-    }
-    /* Datas */
     [data-testid="stSidebar"] .stDateInput > div > div {
-        background-color: rgba(255,255,255,0.15) !important;
-        border-color: rgba(255,255,255,0.4) !important;
+        background-color: #FFFFFF !important;
+        border-color: #A5D6A7 !important;
+        color: #1A2E1A !important;
     }
-    [data-testid="stSidebar"] .stDateInput input {
-        color: #FFFFFF !important;
-        background-color: transparent !important;
+    [data-testid="stSidebar"] [data-baseweb="select"] > div:hover,
+    [data-testid="stSidebar"] [data-baseweb="input"] input:focus {
+        border-color: #1B5E20 !important;
+        box-shadow: 0 0 0 2px rgba(27,94,32,0.12) !important;
     }
+
+    /* Tags selecionadas nos multiselects */
+    [data-testid="stSidebar"] [data-baseweb="tag"] {
+        background-color: #E8F5E9 !important;
+        color: #1B5E20 !important;
+        border: 1px solid #A5D6A7 !important;
+        border-radius: 4px !important;
+    }
+
+    /* Placeholder */
+    [data-testid="stSidebar"] [data-baseweb="select"] [role="combobox"] span,
+    [data-testid="stSidebar"] input::placeholder {
+        color: #78909C !important;
+    }
+
     /* Slider */
     [data-testid="stSidebar"] .stSlider [data-testid="stTickBarMin"],
     [data-testid="stSidebar"] .stSlider [data-testid="stTickBarMax"] {
-        color: rgba(255,255,255,0.8) !important;
-    }
-    /* Botões da sidebar */
-    [data-testid="stSidebar"] .stButton > button {
-        background: rgba(255,255,255,0.18) !important;
-        color: #FFFFFF !important;
-        border: 1px solid rgba(255,255,255,0.45) !important;
-        border-radius: 8px !important;
-        font-weight: 600 !important;
-    }
-    [data-testid="stSidebar"] .stButton > button:hover {
-        background: rgba(255,255,255,0.32) !important;
+        color: #546E7A !important;
     }
 
-    /* Abas — fundo destacado */
-    [data-baseweb="tab-list"] { gap: 4px !important; }
-    [data-baseweb="tab"] {
-        background: #e8f5e9 !important;
-        border-radius: 8px 8px 0 0 !important;
-        border: 1px solid #c8e6c9 !important;
-        border-bottom: none !important;
-        color: #1B5E20 !important;
-        font-weight: 600 !important;
-        padding: 8px 14px !important;
-        margin-right: 2px !important;
-        white-space: nowrap !important;
+    /* Botões na sidebar */
+    [data-testid="stSidebar"] .stButton > button {
+        background: #1B5E20 !important; color: #FFFFFF !important;
+        border: none !important; border-radius: 8px !important;
+        font-weight: 600 !important; width: 100% !important;
+        padding: 8px 0 !important;
     }
-    [data-baseweb="tab"]:hover {
-        background: #c8e6c9 !important;
+    [data-testid="stSidebar"] .stButton > button:hover {
+        background: #2E7D32 !important;
+        box-shadow: 0 3px 8px rgba(27,94,32,0.3) !important;
     }
-    [aria-selected="true"][data-baseweb="tab"] {
-        background: #1B5E20 !important;
-        color: white !important;
+
+    /* Expanders */
+    [data-testid="stSidebar"] details > summary {
+        background-color: #F1F8F1 !important;
+        border: 1px solid #C8E6C9 !important;
+        border-radius: 8px !important; padding: 8px 12px !important;
+    }
+    [data-testid="stSidebar"] details > summary:hover {
+        background-color: #E8F5E9 !important;
+    }
+    [data-testid="stSidebar"] details[open] > summary {
+        background-color: #E8F5E9 !important;
+        border-bottom-left-radius: 0 !important;
+        border-bottom-right-radius: 0 !important;
+    }
+    [data-testid="stSidebar"] details > div {
+        border: 1px solid #C8E6C9 !important;
+        border-top: none !important; border-radius: 0 0 8px 8px !important;
+        padding: 10px 8px !important;
+    }
+
+    /* Toggle */
+    [data-testid="stSidebar"] .stToggle label p { font-size: 0.83rem !important; }
+
+    /* Abas dentro dos expanders da sidebar */
+    [data-testid="stSidebar"] [data-baseweb="tab-list"] { gap: 2px !important; }
+    [data-testid="stSidebar"] [data-baseweb="tab"] {
+        background: #F1F8F1 !important; border-radius: 6px 6px 0 0 !important;
+        border: 1px solid #C8E6C9 !important; border-bottom: none !important;
+        color: #2E7D32 !important; font-weight: 600 !important;
+        padding: 6px 10px !important; font-size: 0.78rem !important;
+    }
+    [data-testid="stSidebar"] [aria-selected="true"][data-baseweb="tab"] {
+        background: #1B5E20 !important; color: #FFFFFF !important;
+        border-color: #1B5E20 !important;
+    }
+
+    /* Abas fora da sidebar (dashboard principal) */
+    [data-testid="stMain"] [data-baseweb="tab-list"] { gap: 4px !important; }
+    [data-testid="stMain"] [data-baseweb="tab"] {
+        background: #e8f5e9 !important; border-radius: 8px 8px 0 0 !important;
+        border: 1px solid #c8e6c9 !important; border-bottom: none !important;
+        color: #1B5E20 !important; font-weight: 600 !important;
+        padding: 8px 14px !important; white-space: nowrap !important;
+    }
+    [data-testid="stMain"] [data-baseweb="tab"]:hover { background: #c8e6c9 !important; }
+    [data-testid="stMain"] [aria-selected="true"][data-baseweb="tab"] {
+        background: #1B5E20 !important; color: white !important;
         border-color: #1B5E20 !important;
     }
 
@@ -597,8 +659,14 @@ _min_date = df_raw['data_venda'].min().date()
 _max_date = df_raw['data_venda'].max().date()
 
 with st.sidebar:
-    st.markdown("## 🌾 Agrosilagem")
-    st.markdown("### Filtros")
+    st.markdown("""
+    <div class="sidebar-brand">
+        <h2>🌾 Agrosilagem</h2>
+        <p>Dashboard Comercial & Financeiro</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="sidebar-section"><span>🔍 Filtros</span></div>', unsafe_allow_html=True)
 
     safra_sel   = st.multiselect("Safra",     sorted(df_raw['safra'].dropna().unique()),     default=[], placeholder="Todas as safras")
     cat_sel     = st.multiselect("Categoria", sorted(df_raw['categoria'].dropna().unique()), default=[], placeholder="Todas as categorias")
@@ -607,16 +675,15 @@ with st.sidebar:
 
     _max_ha = df_raw[df_raw['is_silagem']]['quantidade'].max()
     max_ha  = int(_max_ha) if pd.notna(_max_ha) and _max_ha > 0 else 1
-    ha_range = st.slider("Faixa de Hectares", 0, max_ha, (0, max_ha))
+    ha_range = st.slider("Faixa de Hectares (ha)", 0, max_ha, (0, max_ha))
 
-    st.markdown("---")
+    st.markdown('<div class="sidebar-section"><span>⚙️ Configurações</span></div>', unsafe_allow_html=True)
     modo_escuro = st.toggle("🌙 Modo Escuro", value=False)
-    st.markdown("---")
     if st.button("🔄 Atualizar Dados"):
         st.session_state.pop('df_override', None)
         st.cache_data.clear(); st.rerun()
 
-    st.markdown("---")
+    st.markdown('<div class="sidebar-section"><span>🛠️ Ferramentas</span></div>', unsafe_allow_html=True)
     with st.expander("📤 Importar do Conta Azul"):
         st.markdown("""
 **Como exportar do Conta Azul:**
@@ -685,7 +752,6 @@ with st.sidebar:
                 if st.button("🔄 Aplicar no Dashboard", key="btn_reload_imp"):
                     st.rerun()
 
-    st.markdown("---")
     with st.expander("📄 Relatórios PDF"):
         tab_cli, tab_sfr, tab_ano = st.tabs(["Por Cliente", "Por Safra", "Anual"])
 
