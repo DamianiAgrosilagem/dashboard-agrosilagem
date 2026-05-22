@@ -364,6 +364,8 @@ def extract_safra(d):
         (['VER','2025'],'Safra Verão 2025'),(['VER','2026'],'Safra Verão 2026'),
         (['SAFRINHA','2024'],'Safrinha 2024'),(['SAFRINHA','2025'],'Safrinha 2025'),
         (['SAFRINHA','2026'],'Safrinha 2026'),
+        (['MILHO','2023'],'Safra Milho 2023'),(['MILHO','2024'],'Safra Milho 2024'),
+        (['MILHO','2025'],'Safra Milho 2025'),(['MILHO','2026'],'Safra Milho 2026'),
     ]
     for keys, label in mapping:
         if all(k in d for k in keys): return label
@@ -661,10 +663,10 @@ def layout_mobile(fig, height=380, margin_b=60, font_size=13):
     return fig
 
 SAFRA_ORDER = [
-    'Safra Inverno 2023','Safra 2023',
-    'Safra Verão 2024','Safrinha 2024','Safra Inverno 2024','Safra 2024',
-    'Safra Verão 2025','Safrinha 2025','Safra Inverno 2025','Safra 2025',
-    'Safra Verão 2026','Safrinha 2026','Safra Inverno 2026','Safra 2026',
+    'Safra Milho 2023','Safra Inverno 2023','Safra 2023',
+    'Safra Verão 2024','Safra Milho 2024','Safrinha 2024','Safra Inverno 2024','Safra 2024',
+    'Safra Verão 2025','Safra Milho 2025','Safrinha 2025','Safra Inverno 2025','Safra 2025',
+    'Safra Verão 2026','Safra Milho 2026','Safrinha 2026','Safra Inverno 2026','Safra 2026',
     'Outros Serviços',
 ]
 
