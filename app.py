@@ -143,6 +143,15 @@ st.markdown("""
         fill: #FFFFFF !important;
     }
 
+    /* Valor selecionado nos selectboxes (relatórios) */
+    [data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="single-value"] {
+        background-color: #2E7D32 !important;
+        color: #FFFFFF !important;
+        border-radius: 4px !important;
+        padding: 2px 8px !important;
+        font-weight: 600 !important;
+    }
+
     /* Placeholder dos campos */
     [data-testid="stSidebar"] [data-baseweb="select"] [role="combobox"] span {
         color: #78909C !important;
