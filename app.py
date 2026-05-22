@@ -14,6 +14,7 @@ import re
 import io
 from pathlib import Path
 from datetime import datetime
+from relatorios import relatorio_cliente, relatorio_safra, relatorio_anual
 
 st.set_page_config(
     page_title="Agrosilagem — Dashboard Comercial",
@@ -683,6 +684,61 @@ with st.sidebar:
 
                 if st.button("🔄 Aplicar no Dashboard", key="btn_reload_imp"):
                     st.rerun()
+
+    st.markdown("---")
+    with st.expander("📄 Relatórios PDF"):
+        tab_cli, tab_sfr, tab_ano = st.tabs(["Por Cliente", "Por Safra", "Anual"])
+
+        with tab_cli:
+            clientes_lista = sorted(df_raw[df_raw['is_silagem']]['cliente'].dropna().unique())
+            cli_sel = st.selectbox("Cliente", clientes_lista, index=None,
+                                   placeholder="Selecione...", key="rel_cli_sel")
+            if cli_sel:
+                if st.button("📥 Gerar PDF", key="btn_rel_cli"):
+                    with st.spinner("Gerando relatório..."):
+                        pdf_bytes = relatorio_cliente(df_raw, cli_sel)
+                    nome = cli_sel.replace(" ", "_")[:40]
+                    st.download_button(
+                        "⬇️ Baixar Relatório",
+                        data=pdf_bytes,
+                        file_name=f"relatorio_cliente_{nome}.pdf",
+                        mime="application/pdf",
+                        key="dl_rel_cli"
+                    )
+
+        with tab_sfr:
+            safras_lista = sorted(
+                df_raw[df_raw['is_silagem'] & (df_raw['safra'] != 'Outros Serviços')]['safra']
+                .dropna().unique()
+            )
+            sfr_sel = st.selectbox("Safra", safras_lista, index=None,
+                                   placeholder="Selecione...", key="rel_sfr_sel")
+            if sfr_sel:
+                if st.button("📥 Gerar PDF", key="btn_rel_sfr"):
+                    with st.spinner("Gerando relatório..."):
+                        pdf_bytes = relatorio_safra(df_raw, sfr_sel)
+                    nome = sfr_sel.replace(" ", "_")
+                    st.download_button(
+                        "⬇️ Baixar Relatório",
+                        data=pdf_bytes,
+                        file_name=f"relatorio_safra_{nome}.pdf",
+                        mime="application/pdf",
+                        key="dl_rel_sfr"
+                    )
+
+        with tab_ano:
+            anos_lista = sorted(df_raw['ano'].dropna().unique().astype(int), reverse=True)
+            ano_sel = st.selectbox("Ano", anos_lista, index=0, key="rel_ano_sel")
+            if st.button("📥 Gerar PDF", key="btn_rel_ano"):
+                with st.spinner("Gerando relatório..."):
+                    pdf_bytes = relatorio_anual(df_raw, int(ano_sel))
+                st.download_button(
+                    "⬇️ Baixar Relatório",
+                    data=pdf_bytes,
+                    file_name=f"relatorio_anual_{ano_sel}.pdf",
+                    mime="application/pdf",
+                    key="dl_rel_ano"
+                )
 
 # ─── Modo Escuro ─────────────────────────────────────────────────
 if modo_escuro:
