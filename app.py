@@ -971,10 +971,13 @@ def _dlg_fat():
         plot(fig)
     with col_b:
         section("Por Safra")
-        _saf = df.groupby('safra')['valor_bruto'].sum().sort_values(ascending=False).reset_index()
+        _saf = df.groupby('safra')['valor_bruto'].sum().reset_index()
+        _saf['_o'] = _saf['safra'].apply(lambda s: SAFRA_ORDER.index(s) if s in SAFRA_ORDER else 99)
+        _saf = _saf.sort_values('_o').drop(columns='_o')
         _saf['Valor'] = _saf['valor_bruto'].apply(fmt_brl)
         fig2 = px.bar(_saf, x='safra', y='valor_bruto', text='Valor',
-                      color='safra', color_discrete_sequence=PALETTE)
+                      color='safra', color_discrete_sequence=PALETTE,
+                      category_orders={'safra': SAFRA_ORDER})
         fig2.update_traces(textposition='outside')
         layout_mobile(fig2, 300, 100)
         fig2.update_layout(showlegend=False, xaxis_title="", yaxis=dict(showticklabels=False))
@@ -1030,9 +1033,11 @@ def _dlg_tkt():
         _s = _ha.merge(_fat, on='num_venda', how='left')
         _sg = _s.groupby('safra').agg(fat=('fat','sum'), ha=('ha','sum')).reset_index()
         _sg['ticket'] = _sg['fat'] / _sg['ha']
-        _sg = _sg.sort_values('ticket', ascending=False)
+        _sg['_o'] = _sg['safra'].apply(lambda s: SAFRA_ORDER.index(s) if s in SAFRA_ORDER else 99)
+        _sg = _sg.sort_values('_o').drop(columns='_o')
         fig = px.bar(_sg, x='safra', y='ticket', text=_sg['ticket'].apply(fmt_brl),
-                     color='safra', color_discrete_sequence=PALETTE)
+                     color='safra', color_discrete_sequence=PALETTE,
+                     category_orders={'safra': SAFRA_ORDER})
         fig.update_traces(textposition='outside')
         layout_mobile(fig, 300, 100)
         fig.update_layout(showlegend=False, xaxis_title="", yaxis=dict(showticklabels=False))
@@ -1052,11 +1057,13 @@ def _dlg_ha():
     col_a, col_b = st.columns(2)
     with col_a:
         section("Hectares por Safra")
-        _sh = df[df['is_silagem']].groupby('safra')['hectares'].sum()\
-                .sort_values(ascending=False).reset_index()
+        _sh = df[df['is_silagem']].groupby('safra')['hectares'].sum().reset_index()
+        _sh['_o'] = _sh['safra'].apply(lambda s: SAFRA_ORDER.index(s) if s in SAFRA_ORDER else 99)
+        _sh = _sh.sort_values('_o').drop(columns='_o')
         fig = px.bar(_sh, x='safra', y='hectares',
                      text=_sh['hectares'].apply(lambda v: fmt_num(v,1)),
-                     color='safra', color_discrete_sequence=PALETTE)
+                     color='safra', color_discrete_sequence=PALETTE,
+                     category_orders={'safra': SAFRA_ORDER})
         fig.update_traces(textposition='outside')
         layout_mobile(fig, 300, 100)
         fig.update_layout(showlegend=False, xaxis_title="", yaxis=dict(showticklabels=False))
