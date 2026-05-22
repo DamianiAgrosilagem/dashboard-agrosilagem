@@ -282,6 +282,22 @@ def extract_safra(d):
     return 'Outros Serviços'
 
 
+def propagate_safra_venda(df):
+    """Itens de silagem com safra_raw genérico (ex: nome de motorista) ficam como
+    'Outros Serviços'. Se a mesma venda possui outro item de silagem com safra
+    reconhecida, propaga essa safra para os itens sem classificação."""
+    sil_com_safra = df[df['is_silagem'] & (df['safra'] != 'Outros Serviços')]
+    if sil_com_safra.empty:
+        return df
+    safra_map = sil_com_safra.groupby('num_venda')['safra'].agg(
+        lambda s: s.mode().iloc[0]
+    ).to_dict()
+    mask = df['is_silagem'] & (df['safra'] == 'Outros Serviços') & df['num_venda'].isin(safra_map)
+    df = df.copy()
+    df.loc[mask, 'safra'] = df.loc[mask, 'num_venda'].map(safra_map)
+    return df
+
+
 @st.cache_data(show_spinner=False)
 def extract_pdf1(path):
     rows = []
@@ -332,6 +348,7 @@ def build_dataset():
         df = pd.read_csv(VENDAS_FILE, compression='gzip', parse_dates=['data_venda'])
         df['is_silagem'] = df['is_silagem'].astype(bool)
         df['hectares']   = df['hectares'].fillna(0)
+        df = propagate_safra_venda(df)
         return df
     st.error("Base de dados não encontrada. Use o painel **📤 Importar do Conta Azul** na sidebar para carregar os dados.")
     st.stop()
@@ -475,6 +492,7 @@ def import_conta_azul(uploaded_file, merge=True):
     out['is_silagem']= out['produto'].str.upper().str.contains(
                            'CORTE DE SILAGEM|CLAAS|FR 500|FR BIG|KRONE', na=False)
     out['hectares']  = out.apply(lambda r: r['quantidade'] if r['is_silagem'] else 0.0, axis=1)
+    out = propagate_safra_venda(out)
     out['ano_mes']   = out['data_venda'].dt.to_period('M').astype(str)
     out['ano']       = out['data_venda'].dt.year
     out['mes']       = out['data_venda'].dt.month

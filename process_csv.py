@@ -46,6 +46,19 @@ def extract_safra(d):
             return label
     return 'Outros Serviços'
 
+def propagate_safra_venda(df):
+    """Propaga safra reconhecida para itens de silagem sem classificação na mesma venda."""
+    sil_com_safra = df[df['is_silagem'] & (df['safra'] != 'Outros Serviços')]
+    if sil_com_safra.empty:
+        return df
+    safra_map = sil_com_safra.groupby('num_venda')['safra'].agg(
+        lambda s: s.mode().iloc[0]
+    ).to_dict()
+    mask = df['is_silagem'] & (df['safra'] == 'Outros Serviços') & df['num_venda'].isin(safra_map)
+    df = df.copy()
+    df.loc[mask, 'safra'] = df.loc[mask, 'num_venda'].map(safra_map)
+    return df
+
 def process_csv(filepath):
     # Estratégia: ler como UTF-8 (Write tool salva UTF-8)
     # Se o conteúdo foi escrito com mojibake (Latin-1 chars em UTF-8),
@@ -143,6 +156,7 @@ def process_csv(filepath):
     out['is_silagem']= out['produto'].str.upper().str.contains(
                            'CORTE DE SILAGEM|CLAAS|FR 500|FR BIG|KRONE', na=False)
     out['hectares']  = out.apply(lambda r: r['quantidade'] if r['is_silagem'] else 0.0, axis=1)
+    out = propagate_safra_venda(out)
     out['ano_mes']   = out['data_venda'].dt.to_period('M').astype(str)
     out['ano']       = out['data_venda'].dt.year
     out['mes']       = out['data_venda'].dt.month
