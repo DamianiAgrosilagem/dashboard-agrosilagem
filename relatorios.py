@@ -32,6 +32,14 @@ def _num(v, d=1):
 MESES = {1:"Jan",2:"Fev",3:"Mar",4:"Abr",5:"Mai",6:"Jun",
          7:"Jul",8:"Ago",9:"Set",10:"Out",11:"Nov",12:"Dez"}
 
+SAFRA_ORDER = [
+    'Safra Milho 2023','Safra Inverno 2023','Safra 2023',
+    'Safra Verão 2024','Safra Milho 2024','Safrinha 2024','Safra Inverno 2024','Safra 2024',
+    'Safra Verão 2025','Safra Milho 2025','Safrinha 2025','Safra Inverno 2025','Safra 2025',
+    'Safra Verão 2026','Safra Milho 2026','Safrinha 2026','Safra Inverno 2026','Safra 2026',
+    'Outros Servicos',
+]
+
 def _safe(text):
     """Remove caracteres fora do Latin-1 para compatibilidade com fontes PDF."""
     return str(text).encode("latin-1", errors="replace").decode("latin-1")
@@ -298,22 +306,37 @@ def relatorio_safra(df: pd.DataFrame, safra: str) -> bytes:
     return pdf.to_bytes()
 
 
+# Ordem dos meses no ano agrícola (Dez→Nov)
+_MESES_AG    = {12:"Dez",1:"Jan",2:"Fev",3:"Mar",4:"Abr",5:"Mai",
+                6:"Jun",7:"Jul",8:"Ago",9:"Set",10:"Out",11:"Nov"}
+_ORDEM_MESES = [12,1,2,3,4,5,6,7,8,9,10,11]
+
+def _filtrar_ano_agricola(df: pd.DataFrame, ano_ag: str):
+    """Retorna linhas do período Dez(ano_inicio) até Nov(ano_inicio+1)."""
+    sy = int(ano_ag[:4])
+    inicio = pd.Timestamp(sy, 12, 1)
+    fim    = pd.Timestamp(sy + 1, 11, 30)
+    return df[(df["data_venda"] >= inicio) & (df["data_venda"] <= fim)].copy()
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
-# RELATÓRIO 3 - ANUAL
+# RELATÓRIO 3 - ANUAL (por Ano Agrícola Dez-Nov)
 # ═══════════════════════════════════════════════════════════════════════════════
-def relatorio_anual(df: pd.DataFrame, ano: int) -> bytes:
-    da    = df[df["ano"] == ano].copy()
-    da_ant = df[df["ano"] == ano - 1].copy()
+def relatorio_anual(df: pd.DataFrame, ano_agricola: str) -> bytes:
+    da     = _filtrar_ano_agricola(df, ano_agricola)
+    sy     = int(ano_agricola[:4])
+    ano_ag_ant = f"{sy-1}/{str(sy)[-2:]}"
+    da_ant = _filtrar_ano_agricola(df, ano_ag_ant)
 
     if da.empty:
         return b""
 
-    fat   = da["valor_bruto"].sum()
-    liq   = da["valor_liquido"].sum()
-    ha    = da[da["is_silagem"]]["hectares"].sum()
-    n_cli = da["cliente"].nunique()
-    n_v   = da["num_venda"].nunique()
-    tkt   = fat / ha if ha > 0 else 0
+    fat    = da["valor_bruto"].sum()
+    liq    = da["valor_liquido"].sum()
+    ha     = da[da["is_silagem"]]["hectares"].sum()
+    n_cli  = da["cliente"].nunique()
+    n_v    = da["num_venda"].nunique()
+    tkt    = fat / ha if ha > 0 else 0
     margem = liq / fat * 100 if fat > 0 else 0
 
     fat_ant = da_ant["valor_bruto"].sum()
@@ -325,7 +348,7 @@ def relatorio_anual(df: pd.DataFrame, ano: int) -> bytes:
         pct = (novo - ant) / ant * 100
         return f"+{pct:.1f}%" if pct >= 0 else f"{pct:.1f}%"
 
-    pdf = _Base(f"Relatório Anual - {ano}")
+    pdf = _Base(f"Relatório Ano Agricola - {ano_agricola}")
 
     pdf.kpi_row([
         ("Faturamento Bruto",  _brl(fat)),
@@ -337,7 +360,7 @@ def relatorio_anual(df: pd.DataFrame, ano: int) -> bytes:
         ("Total de Hectares",     _num(ha, 1) + " ha"),
         ("Clientes Ativos",       str(n_cli)),
         ("Vendas Realizadas",     str(n_v)),
-        (f"Var. Faturamento vs {ano-1}", _var(fat, fat_ant)),
+        (f"Var. Faturamento vs {ano_ag_ant}", _var(fat, fat_ant)),
     ])
 
     # ── Safras do Ano ─────────────────────────────────────────────────
@@ -351,9 +374,10 @@ def relatorio_anual(df: pd.DataFrame, ano: int) -> bytes:
                .agg(vendas=("num_venda", "nunique"), ha=("ha", "sum"), fat=("fat", "sum"))
                .reset_index())
     sfdf["ticket"] = sfdf["fat"] / sfdf["ha"]
-    sfdf = sfdf.sort_values("fat", ascending=False)
+    sfdf["_o"] = sfdf["safra"].apply(lambda s: SAFRA_ORDER.index(s) if s in SAFRA_ORDER else 99)
+    sfdf = sfdf.sort_values("_o").drop(columns="_o")
 
-    pdf.section("Safras do Ano")
+    pdf.section("Safras do Ano Agricola")
     scols   = ["Safra", "Vendas", "Hectares", "Faturamento", "Ticket R$/ha", "% Fat."]
     swidths = [58, 18, 25, 43, 32, 20]
     saligns = ["L", "C", "R", "R", "R", "R"]
@@ -397,27 +421,31 @@ def relatorio_anual(df: pd.DataFrame, ano: int) -> bytes:
             cwidths, caligns, alt=(i % 2 == 1)
         )
 
-    # ── Evolução Mensal ──────────────────────────────────────────────
+    # ── Evolução Mensal (ordem agrícola: Dez → Nov) ──────────────────
     mensal = (da.groupby("mes")
-               .agg(fat=("valor_bruto", "sum"), ha_=("hectares", "sum"))
-               .reset_index())
+               .agg(fat=("valor_bruto", "sum"))
+               .reset_index()
+               .set_index("mes"))
 
-    pdf.section("Faturamento Mensal")
-    mcols   = ["Mês", "Faturamento", "% do Ano"]
+    pdf.section("Faturamento Mensal (Dez a Nov)")
+    mcols   = ["Mes", "Faturamento", "% do Ano"]
     mwidths = [30, 55, 30]
     maligns = ["L", "R", "R"]
     pdf.thead(mcols, mwidths, maligns)
-    for i, (_, r) in enumerate(mensal.sort_values("mes").iterrows()):
-        pct = r["fat"] / fat * 100 if fat > 0 else 0
+    for i, m in enumerate(_ORDEM_MESES):
+        if m not in mensal.index:
+            continue
+        fat_m = mensal.loc[m, "fat"]
+        pct   = fat_m / fat * 100 if fat > 0 else 0
         pdf.trow(
-            [MESES.get(int(r["mes"]), str(r["mes"])), _brl(r["fat"]), f"{pct:.1f}%"],
+            [_MESES_AG[m], _brl(fat_m), f"{pct:.1f}%"],
             mwidths, maligns, alt=(i % 2 == 1)
         )
     pdf.total_row(["TOTAL", _brl(fat), "100,0%"], mwidths, maligns)
 
     # ── Comparativo com ano anterior ─────────────────────────────────
     if not da_ant.empty:
-        pdf.section(f"Comparativo {ano} vs {ano - 1}")
+        pdf.section(f"Comparativo {ano_agricola} vs {ano_ag_ant}")
         indicadores = [
             ("Faturamento Bruto",  _brl(fat),      _brl(fat_ant),  _var(fat, fat_ant)),
             ("Total Hectares",     _num(ha, 1),     _num(ha_ant, 1), _var(ha, ha_ant)),
@@ -426,7 +454,7 @@ def relatorio_anual(df: pd.DataFrame, ano: int) -> bytes:
              _brl(fat_ant / ha_ant if ha_ant > 0 else 0),
              _var(tkt, fat_ant / ha_ant if ha_ant > 0 else 0)),
         ]
-        icols   = ["Indicador", str(ano), str(ano - 1), "Variação"]
+        icols   = ["Indicador", ano_agricola, ano_ag_ant, "Variacao"]
         iwidths = [65, 45, 45, 31]
         ialigns = ["L", "R", "R", "R"]
         pdf.thead(icols, iwidths, ialigns)

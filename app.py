@@ -374,6 +374,15 @@ def extract_safra(d):
     return 'Outros Serviços'
 
 
+def get_ano_agricola(s: pd.Series) -> pd.Series:
+    """Dez de X → 'X/XX+1'; Jan-Nov de X → 'X-1/XX'. Ex: ago/2023 → '2022/23'."""
+    year  = s.dt.year
+    month = s.dt.month
+    start = year.where(month == 12, year - 1)
+    end2  = (start + 1).astype(str).str[-2:]
+    return start.astype(str) + "/" + end2
+
+
 def propagate_safra_venda(df):
     """Itens de silagem com safra_raw genérico (ex: nome de motorista) ficam como
     'Outros Serviços'. Se a mesma venda possui outro item de silagem com safra
@@ -438,9 +447,10 @@ def extract_pdf2(path):
 def build_dataset():
     if VENDAS_FILE.exists():
         df = pd.read_csv(VENDAS_FILE, compression='gzip', parse_dates=['data_venda'])
-        df['is_silagem'] = df['is_silagem'].astype(bool)
-        df['hectares']   = df['hectares'].fillna(0)
+        df['is_silagem']    = df['is_silagem'].astype(bool)
+        df['hectares']      = df['hectares'].fillna(0)
         df = propagate_safra_venda(df)
+        df['ano_agricola']  = get_ano_agricola(df['data_venda'])
         return df
     st.error("Base de dados não encontrada. Use o painel **📤 Importar do Conta Azul** na sidebar para carregar os dados.")
     st.stop()
@@ -585,9 +595,10 @@ def import_conta_azul(uploaded_file, merge=True):
                            'CORTE DE SILAGEM|CLAAS|FR 500|FR BIG|KRONE', na=False)
     out['hectares']  = out.apply(lambda r: r['quantidade'] if r['is_silagem'] else 0.0, axis=1)
     out = propagate_safra_venda(out)
-    out['ano_mes']   = out['data_venda'].dt.to_period('M').astype(str)
-    out['ano']       = out['data_venda'].dt.year
-    out['mes']       = out['data_venda'].dt.month
+    out['ano_mes']      = out['data_venda'].dt.to_period('M').astype(str)
+    out['ano']          = out['data_venda'].dt.year
+    out['mes']          = out['data_venda'].dt.month
+    out['ano_agricola'] = get_ano_agricola(out['data_venda'])
 
     vl = out.groupby('num_venda')['valor_liquido'].sum().reset_index()
     vl.columns = ['num_venda','valor_liquido_total_venda']
@@ -694,6 +705,18 @@ with st.sidebar:
         <p>Dashboard Comercial & Financeiro</p>
     </div>
     """, unsafe_allow_html=True)
+
+    st.markdown('<div class="sidebar-section"><span>📅 Ano Agrícola</span></div>', unsafe_allow_html=True)
+    _anos_ag = sorted(df_raw['ano_agricola'].dropna().unique(), reverse=True)
+    _aa_cols = st.columns(2)
+    for _i, _aa in enumerate(_anos_ag):
+        with _aa_cols[_i % 2]:
+            if st.button(_aa, key=f"aa_{_aa}", use_container_width=True):
+                _sy = int(_aa[:4])
+                from datetime import date as _date
+                st.session_state['dt_de']  = _date(_sy, 12, 1)
+                st.session_state['dt_ate'] = _date(_sy + 1, 11, 30)
+                st.rerun()
 
     st.markdown('<div class="sidebar-section"><span>🔍 Filtros</span></div>', unsafe_allow_html=True)
 
@@ -822,15 +845,16 @@ with st.sidebar:
                     )
 
         with tab_ano:
-            anos_lista = sorted(df_raw['ano'].dropna().unique().astype(int), reverse=True)
-            ano_sel = st.selectbox("Ano", anos_lista, index=0, key="rel_ano_sel")
+            anos_ag_lista = sorted(df_raw['ano_agricola'].dropna().unique(), reverse=True)
+            ano_ag_sel = st.selectbox("Ano Agrícola", anos_ag_lista, index=0, key="rel_ano_sel")
             if st.button("📥 Gerar PDF", key="btn_rel_ano"):
                 with st.spinner("Gerando relatório..."):
-                    pdf_bytes = relatorio_anual(df_raw, int(ano_sel))
+                    pdf_bytes = relatorio_anual(df_raw, ano_ag_sel)
+                nome_aa = ano_ag_sel.replace("/", "-")
                 st.download_button(
                     "⬇️ Baixar Relatório",
                     data=pdf_bytes,
-                    file_name=f"relatorio_anual_{ano_sel}.pdf",
+                    file_name=f"relatorio_anual_{nome_aa}.pdf",
                     mime="application/pdf",
                     key="dl_rel_ano"
                 )
