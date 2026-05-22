@@ -165,8 +165,22 @@ def process_csv(filepath):
     vl.columns = ['num_venda','valor_liquido_total_venda']
     out = out.merge(vl, on='num_venda', how='left')
 
-    # Salva
+    # Mescla com histórico existente: dados do novo arquivo têm prioridade,
+    # vendas que não estão no novo arquivo são preservadas do histórico.
     out_path = DATA_DIR / 'vendas.csv.gz'
+    if out_path.exists():
+        try:
+            existing = pd.read_csv(out_path, compression='gzip', parse_dates=['data_venda'])
+            existing['is_silagem'] = existing['is_silagem'].astype(bool)
+            vendas_novas = set(out['num_venda'].unique())
+            historico = existing[~existing['num_venda'].isin(vendas_novas)]
+            n_hist = historico['num_venda'].nunique()
+            out = pd.concat([historico, out], ignore_index=True)
+            out = out.sort_values('data_venda').reset_index(drop=True)
+            print(f"Histórico preservado: {n_hist:,} vendas anteriores mantidas")
+        except Exception as e:
+            print(f"[AVISO] Não foi possível mesclar com histórico: {e}")
+
     out.to_csv(out_path, index=False, compression='gzip')
     print(f"\nSalvo: {out_path}")
     print(f"Total linhas: {len(out):,}")
