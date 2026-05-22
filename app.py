@@ -17,7 +17,7 @@ from datetime import datetime
 from relatorios import relatorio_cliente, relatorio_safra, relatorio_anual
 
 st.set_page_config(
-    page_title="Agrosilagem — Dashboard Comercial",
+    page_title="Damiani Agrosilagem — Dashboard Comercial",
     page_icon="🌾",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -73,54 +73,61 @@ CIDADES_COORDS = {
 # ─── CSS ─────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    /* ── Sidebar: fundo branco com acentos verdes ── */
+    /* ── Sidebar: fundo verde com campos legíveis ── */
     [data-testid="stSidebar"] {
-        background-color: #FFFFFF;
-        border-right: 2px solid #C8E6C9;
+        background-color: #1B5E20;
+        border-right: none;
     }
-    [data-testid="stSidebar"] * { color: #1A2E1A !important; }
+    [data-testid="stSidebar"] * { color: #FFFFFF !important; }
 
     /* Cabeçalho da marca */
     .sidebar-brand {
-        background: linear-gradient(135deg, #1B5E20, #2E7D32);
-        border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;
-        text-align: center;
+        background: rgba(0,0,0,0.25);
+        border-radius: 10px; padding: 14px 16px; margin-bottom: 4px;
+        text-align: center; border: 1px solid rgba(255,255,255,0.15);
     }
     .sidebar-brand h2 {
-        color: #FFFFFF !important; margin: 0; font-size: 1.2rem; font-weight: 700;
+        color: #FFFFFF !important; margin: 0; font-size: 1.15rem; font-weight: 700;
     }
     .sidebar-brand p {
-        color: rgba(255,255,255,0.8) !important; margin: 2px 0 0 0; font-size: 0.72rem;
+        color: rgba(255,255,255,0.75) !important; margin: 3px 0 0 0; font-size: 0.71rem;
     }
 
     /* Títulos de seção da sidebar */
     .sidebar-section {
-        background: #E8F5E9; border-left: 3px solid #1B5E20;
+        background: rgba(255,255,255,0.12);
+        border-left: 3px solid #81C784;
         border-radius: 0 6px 6px 0; padding: 5px 10px; margin: 14px 0 8px 0;
     }
     .sidebar-section span {
-        color: #1B5E20 !important; font-weight: 700 !important; font-size: 0.78rem !important;
-        text-transform: uppercase; letter-spacing: 0.6px;
+        color: #FFFFFF !important; font-weight: 700 !important; font-size: 0.76rem !important;
+        text-transform: uppercase; letter-spacing: 0.8px;
     }
 
     /* Labels dos campos */
     [data-testid="stSidebar"] label p,
     [data-testid="stSidebar"] .stMarkdown p {
-        color: #2D4A2D !important; font-weight: 500 !important; font-size: 0.83rem !important;
+        color: rgba(255,255,255,0.9) !important; font-weight: 500 !important;
+        font-size: 0.83rem !important;
     }
 
-    /* Inputs e selects — fundo branco com borda verde */
+    /* Inputs e selects — FUNDO BRANCO para máxima legibilidade */
     [data-testid="stSidebar"] [data-baseweb="select"] > div,
     [data-testid="stSidebar"] [data-baseweb="input"] input,
     [data-testid="stSidebar"] .stDateInput > div > div {
         background-color: #FFFFFF !important;
-        border-color: #A5D6A7 !important;
+        border-color: rgba(255,255,255,0.3) !important;
         color: #1A2E1A !important;
     }
-    [data-testid="stSidebar"] [data-baseweb="select"] > div:hover,
-    [data-testid="stSidebar"] [data-baseweb="input"] input:focus {
-        border-color: #1B5E20 !important;
-        box-shadow: 0 0 0 2px rgba(27,94,32,0.12) !important;
+    /* Texto dentro dos campos */
+    [data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="input"] input,
+    [data-testid="stSidebar"] [data-baseweb="select"] div[data-value],
+    [data-testid="stSidebar"] .stDateInput input {
+        color: #1A2E1A !important;
+    }
+    [data-testid="stSidebar"] [data-baseweb="select"] > div:focus-within {
+        border-color: #81C784 !important;
+        box-shadow: 0 0 0 2px rgba(129,199,132,0.4) !important;
     }
 
     /* Tags selecionadas nos multiselects */
@@ -131,64 +138,69 @@ st.markdown("""
         border-radius: 4px !important;
     }
 
-    /* Placeholder */
-    [data-testid="stSidebar"] [data-baseweb="select"] [role="combobox"] span,
-    [data-testid="stSidebar"] input::placeholder {
+    /* Placeholder dos campos */
+    [data-testid="stSidebar"] [data-baseweb="select"] [role="combobox"] span {
         color: #78909C !important;
     }
 
-    /* Slider */
+    /* Slider — trilha e valores */
     [data-testid="stSidebar"] .stSlider [data-testid="stTickBarMin"],
     [data-testid="stSidebar"] .stSlider [data-testid="stTickBarMax"] {
-        color: #546E7A !important;
+        color: rgba(255,255,255,0.75) !important;
     }
 
     /* Botões na sidebar */
     [data-testid="stSidebar"] .stButton > button {
-        background: #1B5E20 !important; color: #FFFFFF !important;
-        border: none !important; border-radius: 8px !important;
-        font-weight: 600 !important; width: 100% !important;
-        padding: 8px 0 !important;
+        background: rgba(255,255,255,0.15) !important; color: #FFFFFF !important;
+        border: 1px solid rgba(255,255,255,0.4) !important;
+        border-radius: 8px !important; font-weight: 600 !important;
+        width: 100% !important; padding: 8px 0 !important;
     }
     [data-testid="stSidebar"] .stButton > button:hover {
-        background: #2E7D32 !important;
-        box-shadow: 0 3px 8px rgba(27,94,32,0.3) !important;
+        background: rgba(255,255,255,0.28) !important;
     }
 
     /* Expanders */
     [data-testid="stSidebar"] details > summary {
-        background-color: #F1F8F1 !important;
-        border: 1px solid #C8E6C9 !important;
+        background-color: rgba(255,255,255,0.12) !important;
+        border: 1px solid rgba(255,255,255,0.25) !important;
         border-radius: 8px !important; padding: 8px 12px !important;
+        color: #FFFFFF !important;
     }
     [data-testid="stSidebar"] details > summary:hover {
-        background-color: #E8F5E9 !important;
+        background-color: rgba(255,255,255,0.2) !important;
     }
     [data-testid="stSidebar"] details[open] > summary {
-        background-color: #E8F5E9 !important;
+        background-color: rgba(255,255,255,0.18) !important;
         border-bottom-left-radius: 0 !important;
         border-bottom-right-radius: 0 !important;
     }
     [data-testid="stSidebar"] details > div {
-        border: 1px solid #C8E6C9 !important;
+        background-color: rgba(0,0,0,0.15) !important;
+        border: 1px solid rgba(255,255,255,0.2) !important;
         border-top: none !important; border-radius: 0 0 8px 8px !important;
         padding: 10px 8px !important;
     }
 
     /* Toggle */
-    [data-testid="stSidebar"] .stToggle label p { font-size: 0.83rem !important; }
+    [data-testid="stSidebar"] .stToggle label p {
+        color: rgba(255,255,255,0.9) !important; font-size: 0.83rem !important;
+    }
 
     /* Abas dentro dos expanders da sidebar */
     [data-testid="stSidebar"] [data-baseweb="tab-list"] { gap: 2px !important; }
     [data-testid="stSidebar"] [data-baseweb="tab"] {
-        background: #F1F8F1 !important; border-radius: 6px 6px 0 0 !important;
-        border: 1px solid #C8E6C9 !important; border-bottom: none !important;
-        color: #2E7D32 !important; font-weight: 600 !important;
+        background: rgba(255,255,255,0.12) !important;
+        border-radius: 6px 6px 0 0 !important;
+        border: 1px solid rgba(255,255,255,0.2) !important;
+        border-bottom: none !important;
+        color: rgba(255,255,255,0.9) !important; font-weight: 600 !important;
         padding: 6px 10px !important; font-size: 0.78rem !important;
     }
     [data-testid="stSidebar"] [aria-selected="true"][data-baseweb="tab"] {
-        background: #1B5E20 !important; color: #FFFFFF !important;
-        border-color: #1B5E20 !important;
+        background: rgba(255,255,255,0.25) !important;
+        color: #FFFFFF !important;
+        border-color: rgba(255,255,255,0.4) !important;
     }
 
     /* Abas fora da sidebar (dashboard principal) */
@@ -240,10 +252,11 @@ st.markdown("""
     .main-header {
         background: linear-gradient(90deg,#1B5E20,#2E7D32);
         padding: 16px 24px; border-radius: 10px; color: white; margin-bottom: 20px;
+        margin-top: 8px;
     }
     .main-header h1 { margin: 0; font-size: 1.4rem; }
     .main-header p  { margin: 2px 0; font-size: 0.82rem; opacity: 0.85; }
-    .block-container { padding-top: 1rem; }
+    .block-container { padding-top: 2.5rem; }
     .fidelidade-badge {
         display: inline-block; padding: 3px 10px; border-radius: 12px;
         font-size: 0.8rem; font-weight: 600; margin: 2px;
@@ -661,7 +674,7 @@ _max_date = df_raw['data_venda'].max().date()
 with st.sidebar:
     st.markdown("""
     <div class="sidebar-brand">
-        <h2>🌾 Agrosilagem</h2>
+        <h2>🌾 Damiani Agrosilagem</h2>
         <p>Dashboard Comercial & Financeiro</p>
     </div>
     """, unsafe_allow_html=True)
@@ -827,7 +840,7 @@ st.markdown("""
     <div style="font-size:2.2rem">🌾</div>
     <div>
         <h1>Dashboard Comercial & Financeiro</h1>
-        <p>AGROSILAGEM SERVICOS AGROPECUARIOS E TRANSPORTES LTDA &nbsp;|&nbsp; Análise de vendas e safras</p>
+        <p>DAMIANI AGROSILAGEM SERVICOS AGROPECUARIOS E TRANSPORTES LTDA &nbsp;|&nbsp; Análise de vendas e safras</p>
     </div>
 </div>""", unsafe_allow_html=True)
 
@@ -1978,4 +1991,4 @@ with tab_resumo:
         plot(fig2)
 
     st.markdown("---")
-    st.caption(f"Agrosilagem © 2024–2026 | Dashboard gerado automaticamente | Base: {len(df_raw):,} registros")
+    st.caption(f"Damiani Agrosilagem © 2024–2026 | Dashboard gerado automaticamente | Base: {len(df_raw):,} registros")

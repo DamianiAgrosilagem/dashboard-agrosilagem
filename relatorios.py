@@ -51,7 +51,7 @@ class _Base(FPDF):
         self.set_font("Helvetica", "B", 13)
         self.set_text_color(*_BRANCO)
         self.set_xy(12, 3)
-        self.cell(100, 8, "AGROSILAGEM", align="L")
+        self.cell(100, 8, "DAMIANI AGROSILAGEM", align="L")
         self.set_font("Helvetica", "", 8)
         self.set_xy(12, 3)
         self.cell(186, 8, datetime.now().strftime("%d/%m/%Y"), align="R")
@@ -64,7 +64,7 @@ class _Base(FPDF):
         self.set_y(-13)
         self.set_font("Helvetica", "I", 7)
         self.set_text_color(*_CINZA_D)
-        self.cell(0, 8, f"Agrosilagem 2024-2026  |  Pagina {self.page_no()}", align="C")
+        self.cell(0, 8, f"Damiani Agrosilagem 2024-2026  |  Pagina {self.page_no()}", align="C")
 
     def kpi_row(self, items):
         """Linha de KPIs - até 4 caixas lado a lado."""
