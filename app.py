@@ -132,10 +132,15 @@ st.markdown("""
 
     /* Tags selecionadas nos multiselects */
     [data-testid="stSidebar"] [data-baseweb="tag"] {
-        background-color: #E8F5E9 !important;
-        color: #1B5E20 !important;
-        border: 1px solid #A5D6A7 !important;
+        background-color: #2E7D32 !important;
+        color: #FFFFFF !important;
+        border: 1px solid #1B5E20 !important;
         border-radius: 4px !important;
+    }
+    [data-testid="stSidebar"] [data-baseweb="tag"] span,
+    [data-testid="stSidebar"] [data-baseweb="tag"] svg {
+        color: #FFFFFF !important;
+        fill: #FFFFFF !important;
     }
 
     /* Placeholder dos campos */
