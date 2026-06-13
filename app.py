@@ -706,6 +706,10 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
+    st.page_link("app.py", label="📊 Dashboard")
+    st.page_link("pages/1_🗂️_Clientes.py", label="🗂️ Clientes CRM")
+    st.page_link("pages/2_🗺️_Mapa.py", label="🗺️ Mapa")
+
     st.markdown('<div class="sidebar-section"><span>📅 Ano Agrícola</span></div>', unsafe_allow_html=True)
     _anos_ag = sorted(df_raw['ano_agricola'].dropna().unique(), reverse=True)
     _aa_cols = st.columns(2)
