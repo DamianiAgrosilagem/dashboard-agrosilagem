@@ -1934,6 +1934,39 @@ def horas_por_ha(linhas, horas_df):
     return m['horas'].sum() / m['quantidade'].sum() if m['quantidade'].sum() > 0 else np.nan
 
 
+def filtrar_colunas(tabela, chave):
+    """Filtro por coluna, como o autofiltro do Excel: valores (texto), faixa (números) ou período (datas)."""
+    with st.expander("🔎 Filtrar colunas", expanded=False):
+        escolhidas = st.multiselect("Colunas para filtrar", tabela.columns.tolist(), key=f"{chave}_cols",
+                                    placeholder="Escolha uma ou mais colunas")
+        out = tabela
+        for c in escolhidas:
+            s = out[c]
+            k = f"{chave}_{c}"
+            if pd.api.types.is_datetime64_any_dtype(s):
+                ini, fim = s.min().date(), s.max().date()
+                per = st.date_input(c, value=(ini, fim), min_value=ini, max_value=fim, format="DD/MM/YYYY", key=k)
+                if isinstance(per, (list, tuple)) and len(per) == 2:
+                    out = out[s.dt.date.between(per[0], per[1])]
+            elif pd.api.types.is_numeric_dtype(s):
+                if s.notna().any():
+                    lo, hi = float(s.min()), float(s.max())
+                    a, b = st.columns(2)
+                    vmin = a.number_input(f"{c} — de", value=lo, format="%.2f", key=f"{k}_de")
+                    vmax = b.number_input(f"{c} — até", value=hi, format="%.2f", key=f"{k}_ate")
+                    out = out[s.between(vmin, vmax)]
+                else:
+                    st.caption(f"{c}: sem valores para filtrar.")
+            else:
+                valores = sorted(s.dropna().astype(str).unique(), key=str.lower)
+                sel = st.multiselect(c, valores, key=k, placeholder="Todos")
+                if sel:
+                    out = out[s.astype(str).isin(sel)]
+        if escolhidas:
+            st.caption(f"Mostrando {len(out):,} de {len(tabela):,} linhas".replace(",", "."))
+    return out
+
+
 with tab_relatorios:
     section("📑 Relatórios de Serviços")
     st.caption("Usa os filtros da barra lateral (período, safra, categoria, cidade e cliente). "
@@ -2007,7 +2040,6 @@ with tab_relatorios:
         else:
             tabela['hpa'] = np.nan
         tabela = tabela.sort_values(['data_venda', 'num_venda'], ascending=False)
-        tabela['data_venda'] = tabela['data_venda'].dt.strftime('%d/%m/%Y')
         tabela.columns = ['Data', 'Nº venda', 'Cliente', 'Cidade', 'Safra', 'Serviço / máquina',
                           'Qtd.', 'Un.', 'Valor unit. (R$)', 'Valor total (R$)', 'Horas p/ ha']
         st.caption(f"{len(tabela):,} itens".replace(",", "."))
@@ -2016,16 +2048,23 @@ with tab_relatorios:
         st.info("**Horas p/ ha** fica vazia até a planilha de horas trabalhadas (cliente; safra; horas) "
                 "ser salva em `data/horas_trabalhadas.csv`.")
 
+    tabela = filtrar_colunas(tabela, f"rel_{visao}")
+
     col_cfg = {c: st.column_config.NumberColumn(c, format="localized") for c in tabela.columns
                if pd.api.types.is_numeric_dtype(tabela[c]) and c != 'Nº venda'}
+    if 'Data' in tabela.columns:
+        col_cfg['Data'] = st.column_config.DateColumn('Data', format="DD/MM/YYYY")
     st.dataframe(tabela, use_container_width=True, hide_index=True, height=520, column_config=col_cfg)
 
     d1, d2, _ = st.columns([1, 1, 4])
     _nome = "relatorio_" + {"Por cliente": "por_cliente", "Por serviço": "por_servico", "Detalhado": "detalhado"}[visao]
     with d1:
         buf_rel = io.BytesIO()
-        with pd.ExcelWriter(buf_rel, engine='openpyxl') as writer:
+        with pd.ExcelWriter(buf_rel, engine='openpyxl', datetime_format='DD/MM/YYYY') as writer:
             tabela.to_excel(writer, index=False, sheet_name=visao[:31])
+            ws = writer.sheets[visao[:31]]
+            ws.auto_filter.ref = ws.dimensions  # filtro do Excel nos títulos das colunas
+            ws.freeze_panes = 'A2'
         st.download_button("⬇️ Excel", data=buf_rel.getvalue(), file_name=f"{_nome}.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                            key="rel_xlsx")
