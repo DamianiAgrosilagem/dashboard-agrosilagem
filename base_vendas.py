@@ -109,36 +109,3 @@ def horas_por_ha(linhas, horas_df):
     corte = linhas[linhas['unidade'] == 'ha'].groupby(['cliente', 'safra_venda'], as_index=False)['quantidade'].sum()
     m = corte.merge(horas_df, left_on=['cliente', 'safra_venda'], right_on=['cliente', 'safra'])
     return m['horas'].sum() / m['quantidade'].sum() if m['quantidade'].sum() > 0 else np.nan
-
-
-def filtrar_colunas(tabela, chave):
-    """Filtro por coluna, como o autofiltro do Excel: valores (texto), faixa (números) ou período (datas)."""
-    with st.expander("🔎 Filtrar colunas", expanded=False):
-        escolhidas = st.multiselect("Colunas para filtrar", tabela.columns.tolist(), key=f"{chave}_cols",
-                                    placeholder="Escolha uma ou mais colunas")
-        out = tabela
-        for c in escolhidas:
-            s = out[c]
-            k = f"{chave}_{c}"
-            if pd.api.types.is_datetime64_any_dtype(s):
-                ini, fim = s.min().date(), s.max().date()
-                per = st.date_input(c, value=(ini, fim), min_value=ini, max_value=fim, format="DD/MM/YYYY", key=k)
-                if isinstance(per, (list, tuple)) and len(per) == 2:
-                    out = out[s.dt.date.between(per[0], per[1])]
-            elif pd.api.types.is_numeric_dtype(s):
-                if s.notna().any():
-                    lo, hi = float(s.min()), float(s.max())
-                    a, b = st.columns(2)
-                    vmin = a.number_input(f"{c} — de", value=lo, format="%.2f", key=f"{k}_de")
-                    vmax = b.number_input(f"{c} — até", value=hi, format="%.2f", key=f"{k}_ate")
-                    out = out[s.between(vmin, vmax)]
-                else:
-                    st.caption(f"{c}: sem valores para filtrar.")
-            else:
-                valores = sorted(s.dropna().astype(str).unique(), key=str.lower)
-                sel = st.multiselect(c, valores, key=k, placeholder="Todos")
-                if sel:
-                    out = out[s.astype(str).isin(sel)]
-        if escolhidas:
-            st.caption(f"Mostrando {len(out):,} de {len(tabela):,} linhas".replace(",", "."))
-    return out

@@ -11,7 +11,8 @@ import streamlit as st
 import streamlit.components.v1 as stc
 
 from base_vendas import (fmt_brl, fmt_num, carregar_vendas, versao_base, preparar_itens,
-                         load_horas, horas_por_ha, filtrar_colunas, HORAS_FILE)
+                         load_horas, horas_por_ha, HORAS_FILE)
+from tabela_excel import tabela_excel
 from relatorios import relatorio_cliente, relatorio_safra, relatorio_anual
 
 st.set_page_config(
@@ -137,14 +138,6 @@ def baixar(tabela, nome_arquivo, aba):
                        file_name=f"{nome_arquivo}.csv", mime="text/csv")
 
 
-def mostrar(tabela):
-    cfg = {c: st.column_config.NumberColumn(c, format="localized") for c in tabela.columns
-           if pd.api.types.is_numeric_dtype(tabela[c]) and c != 'Nº venda'}
-    if 'Data' in tabela.columns:
-        cfg['Data'] = st.column_config.DateColumn('Data', format="DD/MM/YYYY")
-    st.dataframe(tabela, use_container_width=True, hide_index=True, height=520, column_config=cfg)
-
-
 # ─── Tabelas com filtros ─────────────────────────────────────────────────────
 if tipo in ("cliente", "servico", "detalhe"):
     rel = filtros(preparar_itens(df_raw))
@@ -201,9 +194,10 @@ if tipo in ("cliente", "servico", "detalhe"):
         nota = "A safra da venda vale para todos os itens dela (caminhões, trator e frete inclusive)."
 
     st.caption(nota + ("" if tem_horas else " Horas p/ ha aparece quando a planilha de horas trabalhadas for incluída."))
-    tabela = filtrar_colunas(tabela, f"col_{tipo}")
-    mostrar(tabela)
-    baixar(tabela, f"relatorio_{tipo}", nome)
+    st.caption("Clique no ▾ do título de uma coluna para filtrar pelos valores dela, como no Excel.")
+    tabela_excel(tabela, chave=tipo, arquivo=f"relatorio_{tipo}", altura=540,
+                 grupo='Nº venda' if tipo == 'detalhe' else None,
+                 grupo_rotulo='Cliente' if tipo == 'detalhe' else None)
 
 # ─── PDFs ────────────────────────────────────────────────────────────────────
 elif tipo == "pdf_cliente":
@@ -258,7 +252,7 @@ elif tipo == "resumo":
 
     st.markdown("##### Maiores clientes")
     t = cli.head(10).rename(columns={'cliente': 'Cliente', 'cidade': 'Cidade', 'fat': 'Faturamento (R$)', 'ha': 'Hectares'})
-    mostrar(t[['Cliente', 'Cidade', 'Faturamento (R$)', 'Hectares']])
+    tabela_excel(t[['Cliente', 'Cidade', 'Faturamento (R$)', 'Hectares']], chave='resumo_top', arquivo='maiores_clientes', altura=380)
 
     st.markdown("##### Faturamento mensal")
     mensal = df.groupby(df['data_venda'].dt.to_period('M').astype(str))['valor_bruto'].sum().reset_index()
