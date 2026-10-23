@@ -64,7 +64,11 @@ def process_csv(filepath):
     # Se o conteúdo foi escrito com mojibake (Latin-1 chars em UTF-8),
     # aplicamos a correção encode('latin-1').decode('utf-8')
     df = None
-    for enc in ('utf-8-sig', 'utf-8', 'latin-1', 'cp1252'):
+    is_excel = str(filepath).lower().endswith(('.xlsx', '.xls'))
+    if is_excel:
+        df = pd.read_excel(filepath, dtype=str)
+        print(f"[OK] Excel lido, shape={df.shape}")
+    for enc in (() if is_excel else ('utf-8-sig', 'utf-8', 'latin-1', 'cp1252')):
         try:
             raw_text = Path(filepath).read_text(encoding=enc)
             # Detecta se tem mojibake (padrão Ã seguido de char Latin-1)
@@ -124,11 +128,14 @@ def process_csv(filepath):
     if 'valor_bruto'   not in out.columns: out['valor_bruto']   = out.get('valor_liquido', '0')
     if 'valor_liquido' not in out.columns: out['valor_liquido'] = out.get('valor_bruto', '0')
 
-    out['num_venda']    = pd.to_numeric(out['num_venda'].astype(str).str.replace(r'\D','',regex=True), errors='coerce').fillna(0).astype(int)
-    out['data_venda']   = pd.to_datetime(out['data_venda'], dayfirst=True, errors='coerce')
-    out['quantidade']   = out['quantidade'].apply(parse_br_number)
-    out['valor_bruto']  = out['valor_bruto'].apply(parse_br_number)
-    out['valor_liquido']= out['valor_liquido'].apply(parse_br_number)
+    # No Excel os números já vêm com ponto decimal (1289.08); no CSV vêm no formato BR (1.289,08)
+    num = (lambda s: pd.to_numeric(s, errors='coerce').fillna(0.0)) if is_excel else (lambda s: s.apply(parse_br_number))
+    out['num_venda']    = pd.to_numeric(out['num_venda'].astype(str).str.replace(r'\.0+$','',regex=True)
+                                        .str.replace(r'\D','',regex=True), errors='coerce').fillna(0).astype(int)
+    out['data_venda']   = pd.to_datetime(out['data_venda'], dayfirst=not is_excel, errors='coerce')
+    out['quantidade']   = num(out['quantidade'])
+    out['valor_bruto']  = num(out['valor_bruto'])
+    out['valor_liquido']= num(out['valor_liquido'])
 
     # Filtra linha de totais (sem data) e valores zero
     n_before = len(out)

@@ -444,7 +444,8 @@ def extract_pdf2(path):
 
 
 @st.cache_data(show_spinner=False)
-def build_dataset():
+def build_dataset(versao_arquivo=None):
+    """`versao_arquivo` (data de modificação da base) faz o cache ser refeito quando o arquivo muda."""
     if VENDAS_FILE.exists():
         df = pd.read_csv(VENDAS_FILE, compression='gzip', parse_dates=['data_venda'])
         df['is_silagem']    = df['is_silagem'].astype(bool)
@@ -564,15 +565,23 @@ def import_conta_azul(uploaded_file, merge=True):
     if 'valor_bruto'   not in out.columns: out['valor_bruto']   = out['valor_liquido']
     if 'valor_liquido' not in out.columns: out['valor_liquido'] = out['valor_bruto']
 
-    out['num_venda']    = pd.to_numeric(out['num_venda'].astype(str).str.replace(r'\D','',regex=True), errors='coerce').fillna(0).astype(int)
-    out['data_venda']   = pd.to_datetime(out['data_venda'], dayfirst=True, errors='coerce')
-    out['quantidade']   = out['quantidade'].apply(parse_br_number)
-    out['valor_bruto']  = out['valor_bruto'].apply(parse_br_number)
-    out['valor_liquido']= out['valor_liquido'].apply(parse_br_number)
+    # No Excel os números já vêm como número (ponto decimal); no CSV vêm no formato BR (1.289,08)
+    is_excel = name.endswith(('.xlsx', '.xls'))
+    num = (lambda s: pd.to_numeric(s, errors='coerce').fillna(0.0)) if is_excel else (lambda s: s.apply(parse_br_number))
+    out['num_venda']    = pd.to_numeric(out['num_venda'].astype(str).str.replace(r'\.0+$','',regex=True)
+                                        .str.replace(r'\D','',regex=True), errors='coerce').fillna(0).astype(int)
+    if is_excel:
+        out['data_venda'] = pd.to_datetime(out['data_venda'], errors='coerce')
+    else:
+        out['data_venda'] = pd.to_datetime(out['data_venda'], dayfirst=True, errors='coerce')
+    out['quantidade']   = num(out['quantidade'])
+    out['valor_bruto']  = num(out['valor_bruto'])
+    out['valor_liquido']= num(out['valor_liquido'])
 
-    # Filtra vendas canceladas — inclui apenas Faturada/Paga/Emitida
-    SITUACOES_VALIDAS = {'faturada','pago','paga','emitida','concluída','concluida',
-                         'aprovada','ativa','finalizada','liquidada'}
+    # Filtra vendas canceladas — o Conta Azul usa "Faturado"/"Aprovado" (masculino) nas exportações atuais
+    SITUACOES_VALIDAS = {'faturada','faturado','pago','paga','emitida','concluída','concluida',
+                         'aprovada','aprovado','ativa','finalizada','liquidada',
+                         'pago parcial','pago parcial em atraso','atrasada'}
     n_total = len(out)
     if 'situacao' in out.columns:
         sit = out['situacao'].fillna('').str.strip().str.lower()
@@ -687,7 +696,7 @@ SAFRA_ORDER = [
 if 'df_override' in st.session_state:
     df_raw = st.session_state['df_override']
 else:
-    df_raw = build_dataset()
+    df_raw = build_dataset(VENDAS_FILE.stat().st_mtime if VENDAS_FILE.exists() else None)
 df_raw['ano_mes'] = df_raw['data_venda'].dt.to_period('M').astype(str)
 df_raw['ano'] = df_raw['data_venda'].dt.year
 df_raw['mes'] = df_raw['data_venda'].dt.month
@@ -1295,10 +1304,10 @@ else:
 # ═══════════════════════════════════════════════════════════════════
 # ABAS
 # ═══════════════════════════════════════════════════════════════════
-(tab_visao, tab_clientes, tab_produtos, tab_geo, tab_mapa,
+(tab_visao, tab_relatorios, tab_clientes, tab_produtos, tab_geo, tab_mapa,
  tab_temporal, tab_safras, tab_sazonalidade, tab_fidelidade,
  tab_projecao, tab_dados, tab_insights, tab_resumo) = st.tabs([
-    "📊 Visão Geral","👥 Clientes","🚜 Produtos","📍 Cidades","🗺️ Mapa",
+    "📊 Visão Geral","📑 Relatórios","👥 Clientes","🚜 Produtos","📍 Cidades","🗺️ Mapa",
     "📈 Evolução Mensal","🌱 Safras","📅 Sazonalidade","🔄 Fidelidade",
     "🎯 Projeção","📋 Dados","💡 Insights","📄 Resumo Executivo",
 ])
@@ -1554,16 +1563,20 @@ with tab_mapa:
 
     st.caption(f"Exibindo {len(mapa_df)} de {len(cid_df)} cidades com coordenadas mapeadas")
 
-    fig_map = px.scatter_mapbox(
-        mapa_df, lat='lat', lon='lon', size='faturamento',
+    # plotly 6+ removeu scatter_mapbox; scatter_map (MapLibre) é o substituto. Fallback para versões antigas.
+    _map_args = dict(
+        lat='lat', lon='lon', size='faturamento',
         color='faturamento', hover_name='cidade',
         hover_data={'faturamento_fmt': True, 'clientes': True, 'receita_ha': True,
                     'faturamento': False, 'lat': False, 'lon': False},
         color_continuous_scale='Greens', size_max=50,
         zoom=5.5, center={"lat":-28.5,"lon":-53.5},
-        mapbox_style="open-street-map",
         labels={'faturamento_fmt':'Faturamento','clientes':'Clientes','receita_ha':'Receita/ha'}
     )
+    if hasattr(px, 'scatter_map'):
+        fig_map = px.scatter_map(mapa_df, map_style="open-street-map", **_map_args)
+    else:
+        fig_map = px.scatter_mapbox(mapa_df, mapbox_style="open-street-map", **_map_args)
     fig_map.update_layout(
         height=550, margin=dict(l=0,r=0,t=0,b=0),
         coloraxis_colorbar_title="Faturamento (R$)",
@@ -1881,6 +1894,144 @@ with tab_projecao:
             st.warning("Dados insuficientes para projeção com os filtros atuais.")
     else:
         st.warning("São necessárias pelo menos 2 safras para gerar projeção.")
+
+# ───────────────────────────────────────────────────────────────────
+# ABA — RELATÓRIOS (quantidade, valor unitário, valor total, horas p/ ha)
+# ───────────────────────────────────────────────────────────────────
+HORAS_FILE = DATA_DIR / "horas_trabalhadas.csv"
+
+
+def unidade_item(produto, categoria, safra_raw, valor_unit):
+    """Unidade de cobrança do item: ha (corte), h (trator/terceiros por hora), carga (caminhão/frete)."""
+    p = str(produto).upper()
+    if categoria == 'Corte de Silagem' or 'CORTE, TRANSPORTE' in p:
+        return 'h' if re.search(r'P/ ?HR|HORA', str(safra_raw).upper()) else 'ha'
+    if 'P/HORA' in p or 'P/ HORA' in p: return 'h'
+    if 'P/CARGA' in p: return 'carga'
+    if categoria == 'Caminhões': return 'carga' if valor_unit <= 400 else 'un'
+    if categoria == 'Ajuste de Diesel': return 'L'
+    return 'un'
+
+
+@st.cache_data(show_spinner=False)
+def load_horas():
+    """Horas trabalhadas informadas à parte (não existem no Conta Azul): cliente;safra;horas."""
+    if not HORAS_FILE.exists():
+        return pd.DataFrame(columns=['cliente', 'safra', 'horas'])
+    h = pd.read_csv(HORAS_FILE, sep=';', decimal=',', dtype={'cliente': str, 'safra': str})
+    h['cliente'] = h['cliente'].str.strip().str.upper()
+    h['safra']   = h['safra'].str.strip()
+    h['horas']   = pd.to_numeric(h['horas'], errors='coerce').fillna(0)
+    return h.groupby(['cliente', 'safra'], as_index=False)['horas'].sum()
+
+
+def horas_por_ha(linhas, horas_df):
+    """Soma das horas informadas ÷ hectares das mesmas combinações cliente + safra."""
+    if horas_df.empty:
+        return np.nan
+    corte = linhas[linhas['unidade'] == 'ha'].groupby(['cliente', 'safra_venda'], as_index=False)['quantidade'].sum()
+    m = corte.merge(horas_df, left_on=['cliente', 'safra_venda'], right_on=['cliente', 'safra'])
+    return m['horas'].sum() / m['quantidade'].sum() if m['quantidade'].sum() > 0 else np.nan
+
+
+with tab_relatorios:
+    section("📑 Relatórios de Serviços")
+    st.caption("Usa os filtros da barra lateral (período, safra, categoria, cidade e cliente). "
+               "Aqui a safra de uma venda vale para todos os itens dela — caminhões, trator e frete inclusive.")
+
+    # Safra da venda: propaga a safra reconhecida para todos os itens da mesma venda
+    _sf = df_raw[df_raw['safra'] != 'Outros Serviços'].groupby('num_venda')['safra'].agg(lambda s: s.mode().iloc[0])
+    rel = df_raw.copy()
+    rel['safra_venda'] = rel['safra'].where(rel['safra'] != 'Outros Serviços',
+                                            rel['num_venda'].map(_sf)).fillna('Sem safra no lançamento')
+    rel = rel[rel['data_venda'].dt.date.between(dt_inicio, dt_fim)]
+    if safra_sel:   rel = rel[rel['safra_venda'].isin(safra_sel)]
+    if cat_sel:     rel = rel[rel['categoria'].isin(cat_sel)]
+    if cidade_sel:  rel = rel[rel['cidade'].isin(cidade_sel)]
+    if cliente_sel: rel = rel[rel['cliente'].isin(cliente_sel)]
+    rel = rel[(~rel['is_silagem']) | (rel['quantidade'].between(ha_range[0], ha_range[1]))]
+    rel['valor_unitario'] = np.where(rel['quantidade'] > 0, rel['valor_bruto'] / rel['quantidade'].replace(0, 1), 0)
+    rel['unidade'] = [unidade_item(p, c, s, v) for p, c, s, v in
+                      zip(rel['produto'], rel['categoria'], rel['safra_raw'], rel['valor_unitario'])]
+
+    horas_df = load_horas()
+    tem_horas = not horas_df.empty
+
+    corte = rel[rel['unidade'] == 'ha']
+    ha_tot = corte['quantidade'].sum()
+    hha_tot = horas_por_ha(rel, horas_df)
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("Itens de venda", fmt_num(len(rel)))
+    k2.metric("Hectares cortados", fmt_num(ha_tot, 1))
+    k3.metric("Valor unit. médio do corte", fmt_brl(corte['valor_bruto'].sum() / ha_tot) if ha_tot else "—")
+    k4.metric("Valor total", fmt_brl(rel['valor_bruto'].sum()))
+    k5.metric("Horas p/ ha", fmt_num(hha_tot, 2) if pd.notna(hha_tot) else "aguardando planilha")
+
+    visao = st.radio("Relatório", ["Por cliente", "Por serviço", "Detalhado"], horizontal=True,
+                     label_visibility="collapsed", key="rel_visao")
+
+    if visao == "Por cliente":
+        linhas = []
+        for cli, g in rel.groupby('cliente'):
+            c = g[g['unidade'] == 'ha']
+            ha = c['quantidade'].sum()
+            linhas.append({
+                'Cliente': cli,
+                'Cidade': g['cidade'].mode().iloc[0] if g['cidade'].notna().any() else '',
+                'Nº safras': g['safra_venda'].nunique(),
+                'Hectares': ha,
+                'Valor unit. corte (R$/ha)': c['valor_bruto'].sum() / ha if ha else None,
+                'Valor total (R$)': g['valor_bruto'].sum(),
+                'Horas p/ ha': horas_por_ha(g, horas_df),
+            })
+        tabela = pd.DataFrame(linhas).sort_values('Valor total (R$)', ascending=False) if linhas else pd.DataFrame()
+        st.caption(f"{len(tabela)} clientes. Valor unitário do corte considera só os itens de corte; "
+                   "o valor total inclui caminhões, trator e terceiros.")
+    elif visao == "Por serviço":
+        tabela = (rel.groupby(['produto', 'categoria', 'unidade'], as_index=False)
+                     .agg(qtd=('quantidade', 'sum'), vt=('valor_bruto', 'sum'), cli=('cliente', 'nunique')))
+        tabela['vu'] = tabela['vt'] / tabela['qtd'].replace(0, np.nan)
+        tabela = tabela[['produto', 'categoria', 'unidade', 'qtd', 'vu', 'vt', 'cli']].sort_values('vt', ascending=False)
+        tabela.columns = ['Serviço / máquina', 'Categoria', 'Un.', 'Quantidade', 'Valor unit. médio (R$)',
+                          'Valor total (R$)', 'Clientes']
+        st.caption(f"{len(tabela)} serviços. Valor unitário médio = valor total ÷ quantidade.")
+    else:
+        tabela = rel[['data_venda', 'num_venda', 'cliente', 'cidade', 'safra_venda', 'produto',
+                      'quantidade', 'unidade', 'valor_unitario', 'valor_bruto']].copy()
+        if tem_horas:
+            hpa = (corte.groupby(['cliente', 'safra_venda'], as_index=False)['quantidade'].sum()
+                        .merge(horas_df, left_on=['cliente', 'safra_venda'], right_on=['cliente', 'safra']))
+            hpa['hpa'] = hpa['horas'] / hpa['quantidade']
+            tabela = tabela.merge(hpa[['cliente', 'safra_venda', 'hpa']], on=['cliente', 'safra_venda'], how='left')
+            tabela.loc[tabela['unidade'] != 'ha', 'hpa'] = np.nan
+        else:
+            tabela['hpa'] = np.nan
+        tabela = tabela.sort_values(['data_venda', 'num_venda'], ascending=False)
+        tabela['data_venda'] = tabela['data_venda'].dt.strftime('%d/%m/%Y')
+        tabela.columns = ['Data', 'Nº venda', 'Cliente', 'Cidade', 'Safra', 'Serviço / máquina',
+                          'Qtd.', 'Un.', 'Valor unit. (R$)', 'Valor total (R$)', 'Horas p/ ha']
+        st.caption(f"{len(tabela):,} itens".replace(",", "."))
+
+    if not tem_horas and 'Horas p/ ha' in tabela.columns:
+        st.info("**Horas p/ ha** fica vazia até a planilha de horas trabalhadas (cliente; safra; horas) "
+                "ser salva em `data/horas_trabalhadas.csv`.")
+
+    col_cfg = {c: st.column_config.NumberColumn(c, format="localized") for c in tabela.columns
+               if pd.api.types.is_numeric_dtype(tabela[c]) and c != 'Nº venda'}
+    st.dataframe(tabela, use_container_width=True, hide_index=True, height=520, column_config=col_cfg)
+
+    d1, d2, _ = st.columns([1, 1, 4])
+    _nome = "relatorio_" + {"Por cliente": "por_cliente", "Por serviço": "por_servico", "Detalhado": "detalhado"}[visao]
+    with d1:
+        buf_rel = io.BytesIO()
+        with pd.ExcelWriter(buf_rel, engine='openpyxl') as writer:
+            tabela.to_excel(writer, index=False, sheet_name=visao[:31])
+        st.download_button("⬇️ Excel", data=buf_rel.getvalue(), file_name=f"{_nome}.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           key="rel_xlsx")
+    with d2:
+        st.download_button("⬇️ CSV", data=tabela.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig'),
+                           file_name=f"{_nome}.csv", mime="text/csv", key="rel_csv")
 
 # ───────────────────────────────────────────────────────────────────
 # ABA 11 — DADOS
