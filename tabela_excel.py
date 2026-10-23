@@ -15,6 +15,8 @@ import streamlit.components.v1 as stc
 _TEMPLATE = r"""
 <!doctype html><html lang="pt-BR" translate="no"><head><meta charset="utf-8">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
   :root { --verde:#1B5E20; --verde2:#2E7D32; --linha:#E3E8E0; --suave:#F4F7F2; --texto:#1F2A1C; --mudo:#5E6658; }
   * { box-sizing: border-box; }
@@ -67,6 +69,7 @@ _TEMPLATE = r"""
   <span class="info" id="info"></span>
   <button class="btn" id="limpar" hidden>✕ Limpar filtros</button>
   <button class="btn" id="csv">⬇ CSV</button>
+  <button class="btn" id="pdf">⬇ PDF</button>
   <button class="btn prim" id="xlsx">⬇ Excel</button>
 </div>
 <div class="tbox"><table><thead><tr id="cab"></tr></thead><tbody id="corpo"></tbody><tfoot><tr id="tot"></tr></tfoot></table></div>
@@ -82,6 +85,7 @@ const ROWS = __ROWS__;
 const ARQ = __ARQUIVO__;
 const CHAVE = "tabxl_" + __CHAVE__;
 const GRUPO = __GRUPO__, GRUPO_ROT = __GRUPO_ROTULO__;
+const TITULO = __TITULO__, CONTEXTO = __CONTEXTO__;
 
 const nf = (d) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
 const FMT = {
@@ -111,6 +115,17 @@ function ordenar(rows) {
   });
 }
 
+// Itens de cada venda + subtotal (vendas com 2+ itens); sem grupo, um bloco só
+const INI = Math.max(1, COLS.findIndex((c) => c.total === 'soma'));
+const somas = (rows) => COLS.map((c, i) => c.total === 'soma' ? rows.reduce((s, r) => s + (Number(r[i]) || 0), 0) : null);
+function blocos(rows) {
+  if (GRUPO < 0) return [{ itens: rows, sub: null }];
+  const grupos = new Map();
+  for (const r of rows) { const k = r[GRUPO]; if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(r); }
+  return [...grupos].map(([k, itens]) => ({ itens, sub: itens.length < 2 ? null : {
+    rotulo: `Subtotal da venda ${k}${GRUPO_ROT >= 0 ? ' · ' + itens[0][GRUPO_ROT] : ''} · ${itens.length} itens`, somas: somas(itens) } }));
+}
+
 function desenhar() {
   const cab = document.getElementById('cab');
   cab.innerHTML = COLS.map((c, i) => `<th class="${c.tipo === 'num' ? 'num' : ''}"><div class="h"><span>${esc(c.nome)}${ordem && ordem.i === i ? (ordem.dir > 0 ? ' ▲' : ' ▼') : ''}</span>` +
@@ -120,24 +135,11 @@ function desenhar() {
   const linha = (r) => '<tr>' + COLS.map((c, i) => `<td class="${c.tipo === 'num' ? 'num' : ''}">${esc(mostra(c, r[i]))}</td>`).join('') + '</tr>';
   let html = '';
   if (!rows.length) html = `<tr><td class="vazio" colspan="${COLS.length}">Nenhuma linha com esses filtros.</td></tr>`;
-  else if (GRUPO < 0) html = rows.map(linha).join('');
-  else {
-    // Agrupa mantendo a ordem atual: cada venda aparece onde está seu primeiro item
-    const grupos = new Map();
-    for (const r of rows) { const k = r[GRUPO]; if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(r); }
-    for (const [k, itens] of grupos) {
-      html += itens.map(linha).join('');
-      if (itens.length < 2) continue;  // venda de um item só: o subtotal repetiria a linha
-      const rot = GRUPO_ROT >= 0 ? ' · ' + itens[0][GRUPO_ROT] : '';
-      // rótulo ocupa as colunas até a primeira coluna somada (Qtd., Valor total…)
-      const ini = Math.max(1, COLS.findIndex((c) => c.total === 'soma'));
-      html += `<tr class="sub"><td colspan="${ini}">Subtotal da venda ${esc(k)}${esc(rot)} · ${itens.length} ${itens.length > 1 ? 'itens' : 'item'}</td>` +
-        COLS.slice(ini).map((c, j) => {
-          const i = ini + j;
-          if (c.total !== 'soma') return '<td></td>';
-          return `<td class="num">${esc(mostra(c, itens.reduce((s, r) => s + (Number(r[i]) || 0), 0)))}</td>`;
-        }).join('') + '</tr>';
-    }
+  else for (const b of blocos(rows)) {
+    html += b.itens.map(linha).join('');
+    // subtotal: rótulo ocupa as colunas até a primeira coluna somada
+    if (b.sub) html += `<tr class="sub"><td colspan="${INI}">${esc(b.sub.rotulo)}</td>` +
+      COLS.slice(INI).map((c, j) => b.sub.somas[INI + j] === null ? '<td></td>' : `<td class="num">${esc(mostra(c, b.sub.somas[INI + j]))}</td>`).join('') + '</tr>';
   }
   corpo.innerHTML = html;
   document.getElementById('tot').innerHTML = COLS.map((c, i) => {
@@ -238,6 +240,61 @@ document.getElementById('xlsx').onclick = () => {
   XLSX.writeFile(wb, ARQ + '.xlsx');
 };
 
+// ── PDF do que está na tela: filtros, subtotais e total ──
+function descreverFiltros() {
+  return Object.entries(filtros).map(([i, set]) => {
+    const v = [...set];
+    return `${COLS[i].nome}: ${v.slice(0, 4).join(', ')}${v.length > 4 ? ` e mais ${v.length - 4}` : ''}`;
+  });
+}
+document.getElementById('pdf').onclick = () => {
+  if (!window.jspdf) { alert('Não foi possível carregar o gerador de PDF. Verifique a internet e tente de novo.'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const rows = ordenar(visiveis(-1));
+  const verde = [27, 94, 32], subFundo = [238, 243, 234];
+  const alinhar = (c) => (c.tipo === 'num' ? 'right' : 'left');
+  const P = (c, v) => mostra(c, v).replace('R$ ', 'R$\u00a0');  // R$ nunca separado do número
+  // só colunas de texto longo (cliente, serviço…) quebram linha; o resto ocupa a largura do conteúdo
+  const longa = COLS.map((c, i) => c.tipo === 'texto' && c.fmt === 'texto' && ROWS.some((r) => String(r[i] ?? '').length > 24));
+  const body = [];
+  for (const b of blocos(rows)) {
+    for (const r of b.itens) body.push(COLS.map((c, i) => P(c, r[i])));
+    if (b.sub) body.push([{ content: b.sub.rotulo, colSpan: INI, styles: { fillColor: subFundo, fontStyle: 'bold' } }]
+      .concat(COLS.slice(INI).map((c, j) => ({ content: b.sub.somas[INI + j] === null ? '' : P(c, b.sub.somas[INI + j]),
+        styles: { fillColor: subFundo, fontStyle: 'bold', halign: 'right' } }))));
+  }
+  const tot = somas(rows);
+  const foot = [[{ content: `Total · ${nf(0).format(rows.length)} linhas`, colSpan: INI }]
+    .concat(COLS.slice(INI).map((c, j) => ({ content: tot[INI + j] === null ? '' : P(c, tot[INI + j]), styles: { halign: 'right' } })))];
+  const linhasInfo = [CONTEXTO, ...descreverFiltros()].filter(Boolean);
+  const gerado = 'Gerado em ' + new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  const topo = 22 + linhasInfo.length * 4.5;
+  doc.autoTable({
+    head: [COLS.map((c) => ({ content: c.nome, styles: { halign: alinhar(c) } }))],
+    body, foot, showFoot: 'lastPage',
+    startY: topo, margin: { top: topo, left: 10, right: 10, bottom: 14 },
+    styles: { fontSize: 7.5, cellPadding: 1.4, textColor: [31, 42, 28], lineColor: [227, 232, 224], lineWidth: 0.1 },
+    headStyles: { fillColor: verde, textColor: 255, fontStyle: 'bold' },
+    footStyles: { fillColor: [232, 240, 228], textColor: [31, 42, 28], fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [250, 252, 249] },
+    columnStyles: Object.fromEntries(COLS.map((c, i) => [i, longa[i] ? { halign: alinhar(c) } : { halign: alinhar(c), cellWidth: 'wrap' }])),
+    didDrawPage: () => {
+      const w = doc.internal.pageSize.getWidth(), h = doc.internal.pageSize.getHeight();
+      doc.setFillColor(...verde); doc.rect(0, 0, w, 3, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(27, 94, 32);
+      doc.text('Damiani Agrosilagem · ' + TITULO, 10, 12);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(94, 102, 88);
+      doc.text(gerado, w - 10, 12, { align: 'right' });
+      linhasInfo.forEach((t, k) => doc.text(doc.splitTextToSize(t, w - 20)[0], 10, 18 + k * 4.5));
+      doc.setFontSize(8);
+      doc.text('Página ' + doc.internal.getNumberOfPages() + ' de {total}', w - 10, h - 6, { align: 'right' });
+    },
+  });
+  if (typeof doc.putTotalPages === 'function') doc.putTotalPages('{total}');
+  doc.save(ARQ + '.pdf');
+};
+
 desenhar();
 </script></body></html>
 """
@@ -263,10 +320,12 @@ _SOMAVEIS = ('Hectares', 'Valor total (R$)', 'Valor bruto (R$)', 'Valor líquido
 
 
 def tabela_excel(df: pd.DataFrame, chave: str, arquivo: str, altura: int = 520, formatos: Optional[dict] = None,
-                 grupo: Optional[str] = None, grupo_rotulo: Optional[str] = None):
+                 grupo: Optional[str] = None, grupo_rotulo: Optional[str] = None,
+                 titulo: str = 'Relatório', contexto: str = ''):
     """Mostra `df` com filtro estilo Excel em cada coluna, totais e downloads (Excel/CSV) do que está filtrado.
     `grupo`: coluna que agrupa linhas (ex.: Nº venda) — cada grupo ganha uma linha de subtotal abaixo dos itens;
-    `grupo_rotulo`: coluna mostrada no texto do subtotal (ex.: Cliente)."""
+    `grupo_rotulo`: coluna mostrada no texto do subtotal (ex.: Cliente).
+    `titulo` e `contexto` (filtros do topo da página) vão no cabeçalho do PDF."""
     formatos = formatos or {}
     cols, dados = [], {}
     for nome in df.columns:
@@ -291,5 +350,7 @@ def tabela_excel(df: pd.DataFrame, chave: str, arquivo: str, altura: int = 520, 
             .replace('__ARQUIVO__', json.dumps(arquivo))
             .replace('__CHAVE__', json.dumps(chave))
             .replace('__GRUPO__', json.dumps(list(df.columns).index(grupo) if grupo else -1))
+            .replace('__TITULO__', json.dumps(titulo, ensure_ascii=False))
+            .replace('__CONTEXTO__', json.dumps(contexto, ensure_ascii=False))
             .replace('__GRUPO_ROTULO__', json.dumps(list(df.columns).index(grupo_rotulo) if grupo_rotulo else -1)))
     stc.html(html, height=altura + 52, scrolling=False)

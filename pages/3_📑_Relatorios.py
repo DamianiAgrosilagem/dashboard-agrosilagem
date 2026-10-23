@@ -119,6 +119,14 @@ def filtros(rel):
     if cidades:  rel = rel[rel['cidade'].isin(cidades)]
     if clientes: rel = rel[rel['cliente'].isin(clientes)]
     if cats:     rel = rel[rel['categoria'].isin(cats)]
+    # texto dos filtros do topo, para o cabeçalho do PDF
+    partes = []
+    if isinstance(per, (list, tuple)) and len(per) == 2:
+        partes.append(f"Período: {per[0]:%d/%m/%Y} a {per[1]:%d/%m/%Y}")
+    for rotulo, sel in (("Safra", safras), ("Cidade", cidades), ("Cliente", clientes), ("Categoria", cats)):
+        if sel:
+            partes.append(f"{rotulo}: {', '.join(sel[:4])}{f' e mais {len(sel) - 4}' if len(sel) > 4 else ''}")
+    st.session_state["_contexto_filtros"] = " · ".join(partes)
     return rel
 
 
@@ -197,7 +205,8 @@ if tipo in ("cliente", "servico", "detalhe"):
     st.caption("Clique no ▾ do título de uma coluna para filtrar pelos valores dela, como no Excel.")
     tabela_excel(tabela, chave=tipo, arquivo=f"relatorio_{tipo}", altura=540,
                  grupo='Nº venda' if tipo == 'detalhe' else None,
-                 grupo_rotulo='Cliente' if tipo == 'detalhe' else None)
+                 grupo_rotulo='Cliente' if tipo == 'detalhe' else None,
+                 titulo=nome, contexto=st.session_state.get("_contexto_filtros", ""))
 
 # ─── PDFs ────────────────────────────────────────────────────────────────────
 elif tipo == "pdf_cliente":
@@ -252,7 +261,8 @@ elif tipo == "resumo":
 
     st.markdown("##### Maiores clientes")
     t = cli.head(10).rename(columns={'cliente': 'Cliente', 'cidade': 'Cidade', 'fat': 'Faturamento (R$)', 'ha': 'Hectares'})
-    tabela_excel(t[['Cliente', 'Cidade', 'Faturamento (R$)', 'Hectares']], chave='resumo_top', arquivo='maiores_clientes', altura=380)
+    tabela_excel(t[['Cliente', 'Cidade', 'Faturamento (R$)', 'Hectares']], chave='resumo_top', arquivo='maiores_clientes', altura=380,
+                 titulo='Maiores clientes', contexto=st.session_state.get("_contexto_filtros", ""))
 
     st.markdown("##### Faturamento mensal")
     mensal = df.groupby(df['data_venda'].dt.to_period('M').astype(str))['valor_bruto'].sum().reset_index()
