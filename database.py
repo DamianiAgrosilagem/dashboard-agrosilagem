@@ -4,7 +4,7 @@ Módulo de acesso ao Supabase para o CRM da Damiani Agrosilagem.
 import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
-from typing import Optional, Dict, List
+from typing import Optional, Dict
 from datetime import datetime, timedelta, timezone
 
 # Coordenadas das cidades (para geocodificação automática no import)
@@ -72,10 +72,6 @@ def get_supabase() -> Client:
     url = st.secrets["SUPABASE_URL"]
     key = st.secrets["SUPABASE_KEY"]
     return create_client(url, key)
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 # ─── CLIENTES ────────────────────────────────────────────────────────────────
@@ -190,21 +186,6 @@ def criar_interacao(cliente_id: str, tipo: str, responsavel: str,
         "data_hora": dt,
     }).execute()
     return res.data[0] if res.data else {}
-
-
-def ultima_interacao(cliente_id: str) -> Optional[str]:
-    sb = get_supabase()
-    res = (
-        sb.table("interacoes")
-        .select("data_hora")
-        .eq("cliente_id", cliente_id)
-        .order("data_hora", desc=True)
-        .limit(1)
-        .execute()
-    )
-    if res.data:
-        return res.data[0]["data_hora"]
-    return None
 
 
 # ─── TAREFAS / FOLLOW-UPS ────────────────────────────────────────────────────

@@ -134,16 +134,6 @@ class _Base(FPDF):
 
 
 # ── Helpers de cálculo ────────────────────────────────────────────────────────
-def _ha_fat_por_venda(df):
-    """Retorna DataFrame com num_venda, ha (silagem), fat (total da venda)."""
-    _ha  = (df[df["is_silagem"] & (df["hectares"] > 0)]
-            .groupby("num_venda")
-            .agg(ha=("hectares", "sum"))
-            .reset_index())
-    _fat = df.groupby("num_venda").agg(fat=("valor_bruto", "sum")).reset_index()
-    return _ha.merge(_fat, on="num_venda", how="left")
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # RELATÓRIO 1 - CLIENTE
 # ═══════════════════════════════════════════════════════════════════════════════

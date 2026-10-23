@@ -3,7 +3,6 @@ CRM — Mapa de Clientes
 Damiani Agrosilagem
 """
 import streamlit as st
-import pandas as pd
 import folium
 from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
@@ -40,7 +39,8 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     st.page_link("app.py", label="📊 Dashboard", icon=None)
-    st.page_link("pages/1_🗂️_Clientes.py", label="🗂️ Clientes", icon=None)
+    st.page_link("pages/3_📑_Relatorios.py", label="📑 Relatórios", icon=None)
+    st.page_link("pages/1_🗂️_Clientes.py", label="🗂️ Clientes CRM", icon=None)
     st.page_link("pages/2_🗺️_Mapa.py", label="🗺️ Mapa", icon=None)
 
     st.markdown("---")

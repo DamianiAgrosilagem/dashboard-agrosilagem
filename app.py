@@ -9,12 +9,9 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import pdfplumber
-import re
 import io
-from pathlib import Path
-from datetime import datetime
-from relatorios import relatorio_cliente, relatorio_safra, relatorio_anual
+from base_vendas import (VENDAS_FILE, fmt_brl, fmt_num, get_ano_agricola, propagate_safra_venda,
+                         carregar_vendas, versao_base)
 
 st.set_page_config(
     page_title="Damiani Agrosilagem — Dashboard Comercial",
@@ -59,7 +56,7 @@ CIDADES_COORDS = {
     "Ibirubá":(-28.6289,-53.0872),"Carazinho":(-28.2839,-52.7881),
     "Tupanciretã":(-29.0842,-53.8414),"Jóia":(-28.6539,-54.1158),
     "Palmeira Das Missões":(-27.8989,-53.3131),"Sarandi":(-27.9428,-52.9247),
-    "Espumoso":(-28.7272,-52.8514),"Lagoa Dos Três Cantos":(-28.5789,-52.7953),
+    "Espumoso":(-28.7272,-52.8514),
     "Soledade":(-28.8272,-52.5114),"Fontoura Xavier":(-28.9786,-52.3431),
     "Campos Borges":(-28.8669,-53.0089),"Fortaleza Dos Valos":(-28.7994,-53.3008),
     "Boa Vista Do Incra":(-28.6253,-53.1047),"Saldanha Marinho":(-28.4364,-53.0325),
@@ -306,6 +303,16 @@ st.markdown("""
         padding: 4px;
         margin-bottom: 8px;
     }
+    /* Texto dentro dos campos da barra lateral: escuro sobre fundo branco */
+    [data-testid="stSidebar"] [data-baseweb="select"] *,
+    [data-testid="stSidebar"] [data-baseweb="input"] *,
+    [data-testid="stSidebar"] .stDateInput input { color: #1A2E1A !important; }
+    [data-testid="stSidebar"] [data-baseweb="select"] input::placeholder { color: #78909C !important; }
+    [data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="tag"],
+    [data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="tag"] * { color: #FFFFFF !important; }
+    /* Botão principal: Central de Relatórios em verde */
+    .st-key-btn_central_rel button { background: #1B5E20 !important; border-color: #1B5E20 !important; color: #FFFFFF !important; font-weight: 600 !important; }
+    .st-key-btn_central_rel button:hover { background: #2E7D32 !important; }
     /* Botão destaque R$/ha */
     [data-testid="stButton"][data-key="kb_rpha"] button,
     button[data-testid="baseButton-secondary"]:has(div p) {
@@ -341,10 +348,6 @@ st.markdown("""
 # ═══════════════════════════════════════════════════════════════════
 # PATHS E EXTRAÇÃO
 # ═══════════════════════════════════════════════════════════════════
-BASE_DIR    = Path(__file__).parent
-DATA_DIR    = BASE_DIR / "data"
-PDF_DIR     = BASE_DIR.parent
-VENDAS_FILE = DATA_DIR / "vendas.csv.gz"
 
 
 def parse_br_number(s):
@@ -384,123 +387,6 @@ def extract_safra(d):
     for yr in ['2023','2024','2025','2026']:
         if yr in d: return f'Safra {yr}'
     return 'Outros Serviços'
-
-
-def get_ano_agricola(s: pd.Series) -> pd.Series:
-    """Dez de X → 'X/XX+1'; Jan-Nov de X → 'X-1/XX'. Ex: ago/2023 → '2022/23'."""
-    year  = s.dt.year
-    month = s.dt.month
-    start = year.where(month == 12, year - 1)
-    end2  = (start + 1).astype(str).str[-2:]
-    return start.astype(str) + "/" + end2
-
-
-def propagate_safra_venda(df):
-    """Itens de silagem com safra_raw genérico (ex: nome de motorista) ficam como
-    'Outros Serviços'. Se a mesma venda possui outro item de silagem com safra
-    reconhecida, propaga essa safra para os itens sem classificação."""
-    sil_com_safra = df[df['is_silagem'] & (df['safra'] != 'Outros Serviços')]
-    if sil_com_safra.empty:
-        return df
-    safra_map = sil_com_safra.groupby('num_venda')['safra'].agg(
-        lambda s: s.mode().iloc[0]
-    ).to_dict()
-    mask = df['is_silagem'] & (df['safra'] == 'Outros Serviços') & df['num_venda'].isin(safra_map)
-    df = df.copy()
-    df.loc[mask, 'safra'] = df.loc[mask, 'num_venda'].map(safra_map)
-    return df
-
-
-@st.cache_data(show_spinner=False)
-def extract_pdf1(path):
-    rows = []
-    with pdfplumber.open(path) as pdf:
-        for page in pdf.pages:
-            for table in page.extract_tables():
-                for row in table:
-                    if not row or len(row) < 8: continue
-                    r0 = str(row[0]).strip().replace('\n','') if row[0] else ''
-                    if not r0 or not re.match(r'^\d+$', r0) or len(r0) > 5: continue
-                    rows.append(row[:8])
-    return rows
-
-
-@st.cache_data(show_spinner=False)
-def extract_pdf2(path):
-    rows, cur_v, cur_c = [], None, None
-    with pdfplumber.open(path) as pdf:
-        for page in pdf.pages:
-            for table in page.extract_tables():
-                for row in table:
-                    if not row or len(row) < 8: continue
-                    r0=str(row[0]).replace('\n',' ').strip() if row[0] else ''
-                    r1=str(row[1]).replace('\n',' ').strip() if row[1] else ''
-                    r2=str(row[2]).replace('\n',' ').strip() if row[2] else ''
-                    r3=str(row[3]).replace('\n',' ').strip() if row[3] else ''
-                    if 'Número' in r0 or 'Total geral' in r0: continue
-                    if 'Total' in r0 or 'Total' in r1: continue
-                    if re.match(r'^\d+$', r0):
-                        cur_v, cur_c = int(r0), r1
-                        data = r2 if re.match(r'\d{2}/\d{2}/\d{4}',r2) else ''
-                        detalhes = r3
-                    elif cur_v:
-                        data = r2 if re.match(r'\d{2}/\d{2}/\d{4}',r2) else ''
-                        detalhes = r3 if r3 else (r0 if r0 else r1)
-                    else: continue
-                    vb = parse_br_number(row[5]); vl = parse_br_number(row[7])
-                    if vb > 0 and detalhes:
-                        rows.append({'num_venda':cur_v,'cliente':cur_c,'data_venda':data,
-                                     'detalhes':detalhes,'quantidade':parse_br_number(row[4]),
-                                     'valor_bruto':vb,'valor_unitario':parse_br_number(row[6]),'valor_liquido':vl})
-    return rows
-
-
-@st.cache_data(show_spinner=False)
-def build_dataset(versao_arquivo=None):
-    """`versao_arquivo` (data de modificação da base) faz o cache ser refeito quando o arquivo muda."""
-    if VENDAS_FILE.exists():
-        df = pd.read_csv(VENDAS_FILE, compression='gzip', parse_dates=['data_venda'])
-        df['is_silagem']    = df['is_silagem'].astype(bool)
-        df['hectares']      = df['hectares'].fillna(0)
-        df = propagate_safra_venda(df)
-        df['ano_agricola']  = get_ano_agricola(df['data_venda'])
-        return df
-    st.error("Base de dados não encontrada. Use o painel **📤 Importar do Conta Azul** na sidebar para carregar os dados.")
-    st.stop()
-    pdf1 = PDF_DIR / "Relatório de Vendas por Safra.pdf"
-    pdf2 = PDF_DIR / "RESUMO DE VENDAS.pdf"
-    if not pdf1.exists() or not pdf2.exists():
-        st.stop()
-    with st.spinner("Extraindo dados dos PDFs..."):
-        rows1 = extract_pdf1(str(pdf1))
-        rows2 = extract_pdf2(str(pdf2))
-    df1 = []
-    for row in rows1:
-        num = str(row[0]).strip()
-        if not re.match(r'^\d+$', num): continue
-        produto = str(row[4]).replace('\n',' ').strip()
-        safra   = str(row[5]).replace('\n',' ').strip()
-        df1.append({
-            'num_venda':int(num),'data_venda':str(row[1]).replace('\n',' ').strip(),
-            'cliente':str(row[2]).replace('\n',' ').strip(),'cidade':str(row[3]).replace('\n',' ').strip(),
-            'produto':produto,'safra_raw':safra,'quantidade':parse_br_number(row[6]),
-            'valor_bruto':parse_br_number(row[7]),'categoria':categorize_produto(produto),
-            'safra':extract_safra(safra),
-            'is_silagem':any(k in produto.upper() for k in ['CORTE DE SILAGEM','CLAAS','FR 500','FR BIG','KRONE']),
-        })
-    df = pd.DataFrame(df1)
-    df['data_venda'] = pd.to_datetime(df['data_venda'], format='%d/%m/%Y', errors='coerce')
-    df['cidade'] = df['cidade'].str.title().str.strip()
-    df2 = pd.DataFrame(rows2)
-    vl = df2.groupby('num_venda')['valor_liquido'].sum().reset_index()
-    vl.columns = ['num_venda','valor_liquido_total_venda']
-    df = df.merge(vl, on='num_venda', how='left')
-    vb = df.groupby('num_venda')['valor_bruto'].transform('sum')
-    df['valor_liquido'] = df['valor_bruto'] / vb.replace(0,1) * df['valor_liquido_total_venda'].fillna(df['valor_bruto'])
-    df['hectares'] = df.apply(lambda r: r['quantidade'] if r['is_silagem'] else 0.0, axis=1)
-    DATA_DIR.mkdir(exist_ok=True)
-    df.to_csv(VENDAS_FILE, index=False, compression='gzip')
-    return df
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -594,7 +480,6 @@ def import_conta_azul(uploaded_file, merge=True):
     SITUACOES_VALIDAS = {'faturada','faturado','pago','paga','emitida','concluída','concluida',
                          'aprovada','aprovado','ativa','finalizada','liquidada',
                          'pago parcial','pago parcial em atraso','atrasada'}
-    n_total = len(out)
     if 'situacao' in out.columns:
         sit = out['situacao'].fillna('').str.strip().str.lower()
         mask_valida = sit.apply(lambda s: any(v in s for v in SITUACOES_VALIDAS) or s == '')
@@ -641,16 +526,6 @@ def import_conta_azul(uploaded_file, merge=True):
 # ═══════════════════════════════════════════════════════════════════
 # HELPERS
 # ═══════════════════════════════════════════════════════════════════
-def fmt_brl(v):
-    return f"R$ {v:,.2f}".replace(",","X").replace(".",",").replace("X",".")
-
-def fmt_num(v, d=0):
-    return f"{v:,.{d}f}".replace(",","X").replace(".",",").replace("X",".")
-
-def kpi(label, value, cls="", delta=""):
-    dh = f'<div class="kpi-delta">{delta}</div>' if delta else ""
-    return f'<div class="kpi-card {cls}"><div class="kpi-label">{label}</div><div class="kpi-value">{value}</div>{dh}</div>'
-
 def section(title):
     st.markdown(f'<div class="section-title">{title}</div>', unsafe_allow_html=True)
 
@@ -708,7 +583,10 @@ SAFRA_ORDER = [
 if 'df_override' in st.session_state:
     df_raw = st.session_state['df_override']
 else:
-    df_raw = build_dataset(VENDAS_FILE.stat().st_mtime if VENDAS_FILE.exists() else None)
+    df_raw = carregar_vendas(versao_base())
+    if df_raw is None:
+        st.error("Base de dados não encontrada. Use o painel **📤 Importar do Conta Azul** na barra lateral.")
+        st.stop()
 df_raw['ano_mes'] = df_raw['data_venda'].dt.to_period('M').astype(str)
 df_raw['ano'] = df_raw['data_venda'].dt.year
 df_raw['mes'] = df_raw['data_venda'].dt.month
@@ -719,57 +597,54 @@ df_raw['mes'] = df_raw['data_venda'].dt.month
 _min_date = df_raw['data_venda'].min().date()
 _max_date = df_raw['data_venda'].max().date()
 
+def _aplicar_ano_agricola():
+    """Ano agrícola (dez–nov) escolhido na barra lateral → ajusta o período De/Até."""
+    from datetime import date as _date
+    aa = st.session_state.get('ano_ag_sel')
+    if not aa or aa == "Todo o período":
+        ini, fim = _min_date, _max_date
+    else:
+        sy = int(aa[:4])
+        ini, fim = _date(sy, 12, 1), _date(sy + 1, 11, 30)
+    st.session_state['dt_de']  = min(max(ini, _min_date), _max_date)
+    st.session_state['dt_ate'] = max(min(fim, _max_date), _min_date)
+
+
 with st.sidebar:
     st.markdown("""
     <div class="sidebar-brand">
         <h2>🌾 Damiani Agrosilagem</h2>
-        <p>Dashboard Comercial & Financeiro</p>
     </div>
     """, unsafe_allow_html=True)
 
     st.page_link("app.py", label="📊 Dashboard")
+    st.page_link("pages/3_📑_Relatorios.py", label="📑 Relatórios")
     st.page_link("pages/1_🗂️_Clientes.py", label="🗂️ Clientes CRM")
     st.page_link("pages/2_🗺️_Mapa.py", label="🗺️ Mapa")
 
-    st.markdown('<div class="sidebar-section"><span>📅 Ano Agrícola</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-section"><span>Filtros</span></div>', unsafe_allow_html=True)
     _anos_ag = sorted(df_raw['ano_agricola'].dropna().unique(), reverse=True)
-    _aa_cols = st.columns(2)
-    for _i, _aa in enumerate(_anos_ag):
-        with _aa_cols[_i % 2]:
-            if st.button(_aa, key=f"aa_{_aa}", use_container_width=True):
-                _sy = int(_aa[:4])
-                from datetime import date as _date
-                st.session_state['dt_de']  = _date(_sy, 12, 1)
-                st.session_state['dt_ate'] = _date(_sy + 1, 11, 30)
-                st.rerun()
-
-    st.markdown('<div class="sidebar-section"><span>🔍 Filtros</span></div>', unsafe_allow_html=True)
-
-    safra_sel   = st.multiselect("Safra",     sorted(df_raw['safra'].dropna().unique()),     default=[], placeholder="Todas as safras")
-    cat_sel     = st.multiselect("Categoria", sorted(df_raw['categoria'].dropna().unique()), default=[], placeholder="Todas as categorias")
-    cidade_sel  = st.multiselect("Cidade",    sorted(df_raw['cidade'].dropna().unique()),    default=[], placeholder="Todas as cidades")
-    cliente_sel = st.multiselect("Cliente",   sorted(df_raw['cliente'].dropna().unique()),   default=[], placeholder="Todos os clientes")
+    st.selectbox("Ano agrícola (dez–nov)", ["Todo o período"] + _anos_ag, key="ano_ag_sel",
+                 on_change=_aplicar_ano_agricola)
+    safra_sel   = st.multiselect("Safra",   sorted(df_raw['safra'].dropna().unique()),   default=[], placeholder="Todas")
+    cidade_sel  = st.multiselect("Cidade",  sorted(df_raw['cidade'].dropna().unique()),  default=[], placeholder="Todas")
+    cliente_sel = st.multiselect("Cliente", sorted(df_raw['cliente'].dropna().unique()), default=[], placeholder="Todos")
 
     _max_ha = df_raw[df_raw['is_silagem']]['quantidade'].max()
-    max_ha  = int(_max_ha) if pd.notna(_max_ha) and _max_ha > 0 else 1
-    ha_range = st.slider("Faixa de Hectares (ha)", 0, max_ha, (0, max_ha))
+    max_ha  = int(np.ceil(_max_ha)) if pd.notna(_max_ha) and _max_ha > 0 else 1
+    with st.expander("Mais filtros"):
+        cat_sel  = st.multiselect("Categoria", sorted(df_raw['categoria'].dropna().unique()), default=[], placeholder="Todas")
+        ha_range = st.slider("Hectares por item", 0, max_ha, (0, max_ha))
 
-    st.markdown('<div class="sidebar-section"><span>⚙️ Configurações</span></div>', unsafe_allow_html=True)
-    modo_escuro = st.toggle("🌙 Modo Escuro", value=False)
-    if st.button("🔄 Atualizar Dados"):
-        st.session_state.pop('df_override', None)
-        st.cache_data.clear(); st.rerun()
-
-    st.markdown('<div class="sidebar-section"><span>🛠️ Ferramentas</span></div>', unsafe_allow_html=True)
-    with st.expander("📤 Importar do Conta Azul"):
-        st.markdown("""
-**Como exportar do Conta Azul:**
-1. Acesse **Vendas → Relatórios**
-2. Escolha o período desejado
-3. Clique em **Exportar → Excel**
-4. Faça o upload abaixo
-""")
-        st.caption("Aceita .xlsx, .xls ou .csv")
+    st.markdown('<div class="sidebar-section"><span>Dados</span></div>', unsafe_allow_html=True)
+    with st.expander("⚙️ Importar dados e ajustes"):
+        modo_escuro = st.toggle("🌙 Modo escuro", value=False)
+        if st.button("🔄 Recarregar dados", use_container_width=True):
+            st.session_state.pop('df_override', None)
+            st.cache_data.clear(); st.rerun()
+        st.divider()
+        st.markdown("**Importar do Conta Azul**")
+        st.caption("Conta Azul → Vendas → Relatórios → Exportar (.xlsx ou .csv)")
         arq = st.file_uploader(
             "Selecionar arquivo", type=['xlsx','xls','csv'],
             label_visibility='collapsed', key='uploader_ca'
@@ -828,61 +703,6 @@ with st.sidebar:
 
                 if st.button("🔄 Aplicar no Dashboard", key="btn_reload_imp"):
                     st.rerun()
-
-    with st.expander("📄 Relatórios PDF"):
-        tab_cli, tab_sfr, tab_ano = st.tabs(["Por Cliente", "Por Safra", "Anual"])
-
-        with tab_cli:
-            clientes_lista = sorted(df_raw[df_raw['is_silagem']]['cliente'].dropna().unique())
-            cli_sel = st.selectbox("Cliente", clientes_lista, index=None,
-                                   placeholder="Selecione...", key="rel_cli_sel")
-            if cli_sel:
-                if st.button("📥 Gerar PDF", key="btn_rel_cli"):
-                    with st.spinner("Gerando relatório..."):
-                        pdf_bytes = relatorio_cliente(df_raw, cli_sel)
-                    nome = cli_sel.replace(" ", "_")[:40]
-                    st.download_button(
-                        "⬇️ Baixar Relatório",
-                        data=pdf_bytes,
-                        file_name=f"relatorio_cliente_{nome}.pdf",
-                        mime="application/pdf",
-                        key="dl_rel_cli"
-                    )
-
-        with tab_sfr:
-            safras_lista = sorted(
-                df_raw[df_raw['is_silagem'] & (df_raw['safra'] != 'Outros Serviços')]['safra']
-                .dropna().unique()
-            )
-            sfr_sel = st.selectbox("Safra", safras_lista, index=None,
-                                   placeholder="Selecione...", key="rel_sfr_sel")
-            if sfr_sel:
-                if st.button("📥 Gerar PDF", key="btn_rel_sfr"):
-                    with st.spinner("Gerando relatório..."):
-                        pdf_bytes = relatorio_safra(df_raw, sfr_sel)
-                    nome = sfr_sel.replace(" ", "_")
-                    st.download_button(
-                        "⬇️ Baixar Relatório",
-                        data=pdf_bytes,
-                        file_name=f"relatorio_safra_{nome}.pdf",
-                        mime="application/pdf",
-                        key="dl_rel_sfr"
-                    )
-
-        with tab_ano:
-            anos_ag_lista = sorted(df_raw['ano_agricola'].dropna().unique(), reverse=True)
-            ano_ag_sel = st.selectbox("Ano Agrícola", anos_ag_lista, index=0, key="rel_ano_sel")
-            if st.button("📥 Gerar PDF", key="btn_rel_ano"):
-                with st.spinner("Gerando relatório..."):
-                    pdf_bytes = relatorio_anual(df_raw, ano_ag_sel)
-                nome_aa = ano_ag_sel.replace("/", "-")
-                st.download_button(
-                    "⬇️ Baixar Relatório",
-                    data=pdf_bytes,
-                    file_name=f"relatorio_anual_{nome_aa}.pdf",
-                    mime="application/pdf",
-                    key="dl_rel_ano"
-                )
 
 # ─── Modo Escuro ─────────────────────────────────────────────────
 if modo_escuro:
@@ -1265,26 +1085,31 @@ for _col, (_lbl, _val, _sub, _key, _dlg) in zip(st.columns(3) + st.columns(3), _
 if conc5_pct > 60:
     st.markdown('<style>.st-key-kb_conc button { background: #A8322A !important; }</style>', unsafe_allow_html=True)
 
-# ─── Botão R$/ha por Cliente/Ano ─────────────────────────────────
-if st.button("📈 Ticket médio R$/ha por cliente e safra", key="kb_rpha", use_container_width=True):
-    _dlg_rpha()
+# ─── Atalhos: Central de Relatórios e R$/ha por Cliente/Ano ───────
+_b1, _b2 = st.columns(2)
+with _b1:
+    if st.button("📑 Central de Relatórios", key="btn_central_rel", type="primary", use_container_width=True):
+        st.switch_page("pages/3_📑_Relatorios.py")
+with _b2:
+    if st.button("📈 Ticket médio R$/ha por cliente e safra", key="kb_rpha", use_container_width=True):
+        _dlg_rpha()
 
 # ─── Alerta de concentração ──────────────────────────────────────
 if conc5_pct > 60:
     st.markdown(f'<div class="alerta-concentracao">⚠️ <b>Atenção:</b> Os 5 maiores clientes representam <b>{conc5_pct:.1f}%</b> do faturamento ({fmt_brl(fat_top5)}). Risco de concentração elevado — considere diversificar a carteira.</div>', unsafe_allow_html=True)
-else:
-    st.markdown(f'<div class="alerta-ok">✅ <b>Concentração saudável:</b> Top 5 clientes = {conc5_pct:.1f}% do faturamento ({fmt_brl(fat_top5)})</div>', unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════
 # ABAS
 # ═══════════════════════════════════════════════════════════════════
-(tab_visao, tab_relatorios, tab_clientes, tab_produtos, tab_geo, tab_mapa,
- tab_temporal, tab_safras, tab_sazonalidade, tab_fidelidade,
- tab_projecao, tab_dados, tab_insights, tab_resumo) = st.tabs([
-    "📊 Visão Geral","📑 Relatórios","👥 Clientes","🚜 Produtos","📍 Cidades","🗺️ Mapa",
-    "📈 Evolução Mensal","🌱 Safras","📅 Sazonalidade","🔄 Fidelidade",
-    "🎯 Projeção","📋 Dados","💡 Insights","📄 Resumo Executivo",
+(tab_visao, tab_clientes, tab_produtos, tab_geo,
+ tab_temporal, tab_safras, tab_fidelidade,
+ tab_projecao, tab_insights) = st.tabs([
+    "📊 Visão Geral","👥 Clientes","🚜 Produtos","📍 Cidades",
+    "📈 Evolução","🌱 Safras","🔄 Fidelidade",
+    "🎯 Projeção","💡 Insights",
 ])
+tab_mapa = tab_geo               # mapa aparece dentro de Cidades
+tab_sazonalidade = tab_temporal  # sazonalidade aparece dentro de Evolução
 
 # ───────────────────────────────────────────────────────────────────
 # ABA 1 — VISÃO GERAL
@@ -1870,231 +1695,6 @@ with tab_projecao:
         st.warning("São necessárias pelo menos 2 safras para gerar projeção.")
 
 # ───────────────────────────────────────────────────────────────────
-# ABA — RELATÓRIOS (quantidade, valor unitário, valor total, horas p/ ha)
-# ───────────────────────────────────────────────────────────────────
-HORAS_FILE = DATA_DIR / "horas_trabalhadas.csv"
-
-
-def unidade_item(produto, categoria, safra_raw, valor_unit):
-    """Unidade de cobrança do item: ha (corte), h (trator/terceiros por hora), carga (caminhão/frete)."""
-    p = str(produto).upper()
-    if categoria == 'Corte de Silagem' or 'CORTE, TRANSPORTE' in p:
-        return 'h' if re.search(r'P/ ?HR|HORA', str(safra_raw).upper()) else 'ha'
-    if 'P/HORA' in p or 'P/ HORA' in p: return 'h'
-    if 'P/CARGA' in p: return 'carga'
-    if categoria == 'Caminhões': return 'carga' if valor_unit <= 400 else 'un'
-    if categoria == 'Ajuste de Diesel': return 'L'
-    return 'un'
-
-
-@st.cache_data(show_spinner=False)
-def load_horas():
-    """Horas trabalhadas informadas à parte (não existem no Conta Azul): cliente;safra;horas."""
-    if not HORAS_FILE.exists():
-        return pd.DataFrame(columns=['cliente', 'safra', 'horas'])
-    h = pd.read_csv(HORAS_FILE, sep=';', decimal=',', dtype={'cliente': str, 'safra': str})
-    h['cliente'] = h['cliente'].str.strip().str.upper()
-    h['safra']   = h['safra'].str.strip()
-    h['horas']   = pd.to_numeric(h['horas'], errors='coerce').fillna(0)
-    return h.groupby(['cliente', 'safra'], as_index=False)['horas'].sum()
-
-
-def horas_por_ha(linhas, horas_df):
-    """Soma das horas informadas ÷ hectares das mesmas combinações cliente + safra."""
-    if horas_df.empty:
-        return np.nan
-    corte = linhas[linhas['unidade'] == 'ha'].groupby(['cliente', 'safra_venda'], as_index=False)['quantidade'].sum()
-    m = corte.merge(horas_df, left_on=['cliente', 'safra_venda'], right_on=['cliente', 'safra'])
-    return m['horas'].sum() / m['quantidade'].sum() if m['quantidade'].sum() > 0 else np.nan
-
-
-def filtrar_colunas(tabela, chave):
-    """Filtro por coluna, como o autofiltro do Excel: valores (texto), faixa (números) ou período (datas)."""
-    with st.expander("🔎 Filtrar colunas", expanded=False):
-        escolhidas = st.multiselect("Colunas para filtrar", tabela.columns.tolist(), key=f"{chave}_cols",
-                                    placeholder="Escolha uma ou mais colunas")
-        out = tabela
-        for c in escolhidas:
-            s = out[c]
-            k = f"{chave}_{c}"
-            if pd.api.types.is_datetime64_any_dtype(s):
-                ini, fim = s.min().date(), s.max().date()
-                per = st.date_input(c, value=(ini, fim), min_value=ini, max_value=fim, format="DD/MM/YYYY", key=k)
-                if isinstance(per, (list, tuple)) and len(per) == 2:
-                    out = out[s.dt.date.between(per[0], per[1])]
-            elif pd.api.types.is_numeric_dtype(s):
-                if s.notna().any():
-                    lo, hi = float(s.min()), float(s.max())
-                    a, b = st.columns(2)
-                    vmin = a.number_input(f"{c} — de", value=lo, format="%.2f", key=f"{k}_de")
-                    vmax = b.number_input(f"{c} — até", value=hi, format="%.2f", key=f"{k}_ate")
-                    out = out[s.between(vmin, vmax)]
-                else:
-                    st.caption(f"{c}: sem valores para filtrar.")
-            else:
-                valores = sorted(s.dropna().astype(str).unique(), key=str.lower)
-                sel = st.multiselect(c, valores, key=k, placeholder="Todos")
-                if sel:
-                    out = out[s.astype(str).isin(sel)]
-        if escolhidas:
-            st.caption(f"Mostrando {len(out):,} de {len(tabela):,} linhas".replace(",", "."))
-    return out
-
-
-with tab_relatorios:
-    section("📑 Relatórios de Serviços")
-    st.caption("Usa os filtros da barra lateral (período, safra, categoria, cidade e cliente). "
-               "Aqui a safra de uma venda vale para todos os itens dela — caminhões, trator e frete inclusive.")
-
-    # Safra da venda: propaga a safra reconhecida para todos os itens da mesma venda
-    _sf = df_raw[df_raw['safra'] != 'Outros Serviços'].groupby('num_venda')['safra'].agg(lambda s: s.mode().iloc[0])
-    rel = df_raw.copy()
-    rel['safra_venda'] = rel['safra'].where(rel['safra'] != 'Outros Serviços',
-                                            rel['num_venda'].map(_sf)).fillna('Sem safra no lançamento')
-    rel = rel[rel['data_venda'].dt.date.between(dt_inicio, dt_fim)]
-    if safra_sel:   rel = rel[rel['safra_venda'].isin(safra_sel)]
-    if cat_sel:     rel = rel[rel['categoria'].isin(cat_sel)]
-    if cidade_sel:  rel = rel[rel['cidade'].isin(cidade_sel)]
-    if cliente_sel: rel = rel[rel['cliente'].isin(cliente_sel)]
-    rel = rel[(~rel['is_silagem']) | (rel['quantidade'].between(ha_range[0], ha_range[1]))]
-    rel['valor_unitario'] = np.where(rel['quantidade'] > 0, rel['valor_bruto'] / rel['quantidade'].replace(0, 1), 0)
-    rel['unidade'] = [unidade_item(p, c, s, v) for p, c, s, v in
-                      zip(rel['produto'], rel['categoria'], rel['safra_raw'], rel['valor_unitario'])]
-
-    horas_df = load_horas()
-    tem_horas = not horas_df.empty
-
-    corte = rel[rel['unidade'] == 'ha']
-    ha_tot = corte['quantidade'].sum()
-    hha_tot = horas_por_ha(rel, horas_df)
-    k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric("Itens de venda", fmt_num(len(rel)))
-    k2.metric("Hectares cortados", fmt_num(ha_tot, 1))
-    k3.metric("Valor unit. médio do corte", fmt_brl(corte['valor_bruto'].sum() / ha_tot) if ha_tot else "—")
-    k4.metric("Valor total", fmt_brl(rel['valor_bruto'].sum()))
-    k5.metric("Horas p/ ha", fmt_num(hha_tot, 2) if pd.notna(hha_tot) else "aguardando planilha")
-
-    visao = st.radio("Relatório", ["Por cliente", "Por serviço", "Detalhado"], horizontal=True,
-                     label_visibility="collapsed", key="rel_visao")
-
-    if visao == "Por cliente":
-        linhas = []
-        for cli, g in rel.groupby('cliente'):
-            c = g[g['unidade'] == 'ha']
-            ha = c['quantidade'].sum()
-            linhas.append({
-                'Cliente': cli,
-                'Cidade': g['cidade'].mode().iloc[0] if g['cidade'].notna().any() else '',
-                'Nº safras': g['safra_venda'].nunique(),
-                'Hectares': ha,
-                'Valor unit. corte (R$/ha)': c['valor_bruto'].sum() / ha if ha else None,
-                'Valor total (R$)': g['valor_bruto'].sum(),
-                'Horas p/ ha': horas_por_ha(g, horas_df),
-            })
-        tabela = pd.DataFrame(linhas).sort_values('Valor total (R$)', ascending=False) if linhas else pd.DataFrame()
-        st.caption(f"{len(tabela)} clientes. Valor unitário do corte considera só os itens de corte; "
-                   "o valor total inclui caminhões, trator e terceiros.")
-    elif visao == "Por serviço":
-        tabela = (rel.groupby(['produto', 'categoria', 'unidade'], as_index=False)
-                     .agg(qtd=('quantidade', 'sum'), vt=('valor_bruto', 'sum'), cli=('cliente', 'nunique')))
-        tabela['vu'] = tabela['vt'] / tabela['qtd'].replace(0, np.nan)
-        tabela = tabela[['produto', 'categoria', 'unidade', 'qtd', 'vu', 'vt', 'cli']].sort_values('vt', ascending=False)
-        tabela.columns = ['Serviço / máquina', 'Categoria', 'Un.', 'Quantidade', 'Valor unit. médio (R$)',
-                          'Valor total (R$)', 'Clientes']
-        st.caption(f"{len(tabela)} serviços. Valor unitário médio = valor total ÷ quantidade.")
-    else:
-        tabela = rel[['data_venda', 'num_venda', 'cliente', 'cidade', 'safra_venda', 'produto',
-                      'quantidade', 'unidade', 'valor_unitario', 'valor_bruto']].copy()
-        if tem_horas:
-            hpa = (corte.groupby(['cliente', 'safra_venda'], as_index=False)['quantidade'].sum()
-                        .merge(horas_df, left_on=['cliente', 'safra_venda'], right_on=['cliente', 'safra']))
-            hpa['hpa'] = hpa['horas'] / hpa['quantidade']
-            tabela = tabela.merge(hpa[['cliente', 'safra_venda', 'hpa']], on=['cliente', 'safra_venda'], how='left')
-            tabela.loc[tabela['unidade'] != 'ha', 'hpa'] = np.nan
-        else:
-            tabela['hpa'] = np.nan
-        tabela = tabela.sort_values(['data_venda', 'num_venda'], ascending=False)
-        tabela.columns = ['Data', 'Nº venda', 'Cliente', 'Cidade', 'Safra', 'Serviço / máquina',
-                          'Qtd.', 'Un.', 'Valor unit. (R$)', 'Valor total (R$)', 'Horas p/ ha']
-        st.caption(f"{len(tabela):,} itens".replace(",", "."))
-
-    if not tem_horas and 'Horas p/ ha' in tabela.columns:
-        st.info("**Horas p/ ha** fica vazia até a planilha de horas trabalhadas (cliente; safra; horas) "
-                "ser salva em `data/horas_trabalhadas.csv`.")
-
-    tabela = filtrar_colunas(tabela, f"rel_{visao}")
-
-    col_cfg = {c: st.column_config.NumberColumn(c, format="localized") for c in tabela.columns
-               if pd.api.types.is_numeric_dtype(tabela[c]) and c != 'Nº venda'}
-    if 'Data' in tabela.columns:
-        col_cfg['Data'] = st.column_config.DateColumn('Data', format="DD/MM/YYYY")
-    st.dataframe(tabela, use_container_width=True, hide_index=True, height=520, column_config=col_cfg)
-
-    d1, d2, _ = st.columns([1, 1, 4])
-    _nome = "relatorio_" + {"Por cliente": "por_cliente", "Por serviço": "por_servico", "Detalhado": "detalhado"}[visao]
-    with d1:
-        buf_rel = io.BytesIO()
-        with pd.ExcelWriter(buf_rel, engine='openpyxl', datetime_format='DD/MM/YYYY') as writer:
-            tabela.to_excel(writer, index=False, sheet_name=visao[:31])
-            ws = writer.sheets[visao[:31]]
-            ws.auto_filter.ref = ws.dimensions  # filtro do Excel nos títulos das colunas
-            ws.freeze_panes = 'A2'
-        st.download_button("⬇️ Excel", data=buf_rel.getvalue(), file_name=f"{_nome}.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                           key="rel_xlsx")
-    with d2:
-        st.download_button("⬇️ CSV", data=tabela.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig'),
-                           file_name=f"{_nome}.csv", mime="text/csv", key="rel_csv")
-
-# ───────────────────────────────────────────────────────────────────
-# ABA 11 — DADOS
-# ───────────────────────────────────────────────────────────────────
-with tab_dados:
-    section("Dados Filtrados")
-    col_s, col_e, col_x = st.columns([3,1,1])
-    with col_s:
-        search = st.text_input("🔍 Buscar", placeholder="Cliente, cidade, produto, safra...")
-    with col_e:
-        st.markdown("<br>", unsafe_allow_html=True)
-        csv_data = df.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig')
-        st.download_button("⬇️ CSV", data=csv_data, file_name="agrosilagem_dados.csv", mime="text/csv")
-    with col_x:
-        st.markdown("<br>", unsafe_allow_html=True)
-        # Exportação Excel
-        buf = io.BytesIO()
-        with pd.ExcelWriter(buf, engine='openpyxl') as writer:
-            exp = df[['num_venda','data_venda','cliente','cidade','categoria','produto',
-                       'safra','quantidade','hectares','valor_bruto','valor_liquido']].copy()
-            exp['data_venda'] = exp['data_venda'].dt.strftime('%d/%m/%Y')
-            exp.columns = ['Nº Venda','Data','Cliente','Cidade','Categoria','Produto',
-                           'Safra','Qtd','Hectares','Valor Bruto','Valor Líquido']
-            exp.to_excel(writer, index=False, sheet_name='Vendas')
-            cli_df.to_excel(writer, index=False, sheet_name='Clientes')
-        buf.seek(0)
-        st.download_button("⬇️ Excel", data=buf, file_name="agrosilagem_dados.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-    show_df = df.copy()
-    if search:
-        mask = (show_df['cliente'].str.contains(search,case=False,na=False) |
-                show_df['cidade'].str.contains(search,case=False,na=False) |
-                show_df['produto'].str.contains(search,case=False,na=False) |
-                show_df['safra'].str.contains(search,case=False,na=False))
-        show_df = show_df[mask]
-
-    show_fmt = show_df[['num_venda','data_venda','cliente','cidade','categoria',
-                         'produto','safra','quantidade','hectares','valor_bruto','valor_liquido']].copy()
-    show_fmt['data_venda']    = show_fmt['data_venda'].dt.strftime('%d/%m/%Y')
-    show_fmt['valor_bruto']   = show_fmt['valor_bruto'].apply(fmt_brl)
-    show_fmt['valor_liquido'] = show_fmt['valor_liquido'].apply(fmt_brl)
-    show_fmt['quantidade']    = show_fmt['quantidade'].apply(lambda v: fmt_num(v,2))
-    show_fmt['hectares']      = show_fmt['hectares'].apply(lambda v: fmt_num(v,2) if v>0 else '-')
-    show_fmt.columns = ['Nº Venda','Data','Cliente','Cidade','Categoria',
-                        'Produto','Safra','Qtd','Hectares','Valor Bruto','Valor Líquido']
-    st.caption(f"Exibindo {len(show_fmt):,} de {len(df):,} registros filtrados")
-    st.dataframe(show_fmt, use_container_width=True, hide_index=True, height=500)
-
-# ───────────────────────────────────────────────────────────────────
 # ABA 12 — INSIGHTS
 # ───────────────────────────────────────────────────────────────────
 with tab_insights:
@@ -2141,69 +1741,3 @@ with tab_insights:
 
     for item in items:
         st.markdown(item, unsafe_allow_html=True)
-
-# ───────────────────────────────────────────────────────────────────
-# ABA 13 — RESUMO EXECUTIVO
-# ───────────────────────────────────────────────────────────────────
-with tab_resumo:
-    section("📄 Resumo Executivo")
-    st.markdown(f"""
-### AGROSILAGEM — Relatório Executivo
-**Período:** {dt_inicio.strftime('%d/%m/%Y')} a {dt_fim.strftime('%d/%m/%Y')}
-**Gerado em:** {datetime.now().strftime('%d/%m/%Y às %H:%M')}
-
----
-#### Indicadores Financeiros
-
-| Indicador | Valor |
-|-----------|-------|
-| **Faturamento Bruto Total** | {fmt_brl(fat_total)} |
-| **Receita Líquida Total** | {fmt_brl(liq_total)} |
-| **Margem Bruta** | {(liq_total/fat_total*100 if fat_total>0 else 0):.1f}% |
-| **Ticket Médio por Hectare** | {fmt_brl(ticket_medio)} |
-| **Receita Média por Hectare** | {fmt_brl(rec_ha)} |
-
-#### Volume Operacional
-
-| Indicador | Valor |
-|-----------|-------|
-| **Total de Hectares Cortados** | {fmt_num(total_ha,1)} ha |
-| **Total de Clientes Ativos** | {total_cli} |
-| **Total de Vendas Realizadas** | {num_vendas} |
-| **Cidades Atendidas** | {df['cidade'].nunique()} |
-
-#### Concentração de Carteira
-
-| Indicador | Valor | Status |
-|-----------|-------|--------|
-| **Top 5 clientes** | {conc5_pct:.1f}% do faturamento | {'⚠️ Alto' if conc5_pct>60 else '✅ Saudável'} |
-| **Top 10 clientes** | {(fat_top10/fat_total*100 if fat_total>0 else 0):.1f}% do faturamento | — |
-
-#### Top 5 Clientes
-""")
-    for i, (_, r) in enumerate(cli_df.head(5).iterrows(), 1):
-        st.markdown(f"{i}. **{r['cliente']}** ({r['cidade']}) — {fmt_brl(r['faturamento'])} | {fmt_num(r['hectares'],1)} ha")
-
-    st.markdown("---")
-    # Mini gráficos de resumo
-    col_l, col_r = st.columns(2)
-    with col_l:
-        section("Faturamento Mensal")
-        fig = px.area(mensal2, x='ano_mes', y='faturamento',
-                      color_discrete_sequence=[VERDE_CLARO])
-        layout_mobile(fig, 260, 60, 11)
-        fig.update_xaxes(tickangle=45, tickfont=dict(size=9))
-        fig.update_layout(xaxis_title="", yaxis_title="R$", showlegend=False)
-        plot(fig)
-    with col_r:
-        section("Top 10 Clientes")
-        top10r = cli_df.head(10).sort_values('faturamento')
-        fig2 = px.bar(top10r, x='faturamento', y='cliente', orientation='h',
-                      color='faturamento', color_continuous_scale=['#A5D6A7','#1B5E20'])
-        layout_mobile(fig2, 260, 10, 10)
-        fig2.update_layout(showlegend=False, coloraxis_showscale=False,
-                           xaxis=dict(showticklabels=False), yaxis_title="", xaxis_title="")
-        plot(fig2)
-
-    st.markdown("---")
-    st.caption(f"Damiani Agrosilagem © 2024–2026 | Dashboard gerado automaticamente | Base: {len(df_raw):,} registros")
