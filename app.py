@@ -231,19 +231,25 @@ st.markdown("""
         border-color: #1B5E20 !important;
     }
 
+    /* KPI cards: base branca, verde só como acento */
     .kpi-card {
-        background: linear-gradient(135deg, #2E7D32, #1B5E20);
-        border-radius: 12px; padding: 18px 20px; color: white;
-        text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.2); margin-bottom: 8px;
+        background: #FFFFFF; border: 1px solid #E3E8E0; border-radius: 12px;
+        padding: 14px 16px 12px; color: #1F2A1C; min-height: 112px;
+        display: flex; flex-direction: column; gap: 4px;
+        box-shadow: 0 1px 3px rgba(27,94,32,0.06);
     }
-    .kpi-card.azul    { background: linear-gradient(135deg,#1565C0,#0D47A1); }
-    .kpi-card.laranja { background: linear-gradient(135deg,#E65100,#BF360C); }
-    .kpi-card.roxo    { background: linear-gradient(135deg,#6A1B9A,#4A148C); }
-    .kpi-card.teal    { background: linear-gradient(135deg,#00838F,#006064); }
-    .kpi-card.vermelho{ background: linear-gradient(135deg,#C62828,#B71C1C); }
-    .kpi-card .kpi-value { font-size: 1.7rem; font-weight: 700; margin: 6px 0; }
-    .kpi-card .kpi-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; opacity: 0.85; }
-    .kpi-card .kpi-delta { font-size: 0.8rem; margin-top: 4px; opacity: 0.9; }
+    .kpi-card .kpi-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .06em;
+                           color: #5E6658; font-weight: 600; }
+    .kpi-card .kpi-value { font-size: 1.45rem; font-weight: 700; color: #1F2A1C; line-height: 1.2;
+                           font-variant-numeric: tabular-nums; white-space: nowrap;
+                           overflow: hidden; text-overflow: ellipsis; }
+    .kpi-card .kpi-delta { font-size: 0.8rem; color: #5E6658; font-variant-numeric: tabular-nums; }
+    .kpi-card.destaque { border-top: 3px solid #3F7A34; }
+    .kpi-card .chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .75rem; font-weight: 600; }
+    .kpi-card .chip.ok { background: #E3EEDD; color: #2F6A28; }
+    .kpi-card .chip.alerta { background: #FBE6E3; color: #A8322A; }
+    /* "Ver detalhes" sob cada card */
+    [class*="st-key-kb_"]:not(.st-key-kb_rpha) button { justify-content: flex-start; padding-left: 4px; color: #3F7A34 !important; font-size: .82rem; }
 
     .alerta-concentracao {
         background: #FFF3E0; border-left: 5px solid #E65100;
@@ -320,7 +326,8 @@ st.markdown("""
 
     @media (max-width: 768px) {
         [data-testid="column"] { width:100%!important; flex:1 1 100%!important; min-width:100%!important; }
-        .kpi-card .kpi-value { font-size: 1.3rem; }
+        .kpi-card .kpi-value { font-size: 1.25rem; }
+        .kpi-card { min-height: 0; }
         .block-container { padding: 0.5rem 0.5rem 2rem !important; }
     }
 </style>
@@ -882,6 +889,11 @@ if modo_escuro:
         .stTabs [data-baseweb="tab"] { color: #81C784 !important; }
         [data-testid="stMetric"] { color: #E0E0E0 !important; }
         div[data-testid="stDataFrame"] { background: #1E1E1E !important; }
+        .kpi-card { background: #1C2118 !important; border-color: #2E3529 !important; box-shadow: none !important; }
+        .kpi-card .kpi-value { color: #E9ECE3 !important; }
+        .kpi-card .kpi-label, .kpi-card .kpi-delta { color: #A3AA9B !important; }
+        .kpi-card.destaque { border-top-color: #78B866 !important; }
+        [class*="st-key-kb_"]:not(.st-key-kb_rpha) button { color: #8CC97A !important; }
     </style>""", unsafe_allow_html=True)
 
 
@@ -950,47 +962,15 @@ fat_top5  = cli_df.head(5)['faturamento'].sum()
 fat_top10 = cli_df.head(10)['faturamento'].sum()
 conc5_pct = fat_top5 / fat_total * 100 if fat_total > 0 else 0
 
-# ─── JavaScript: estiliza KPI cards dinamicamente ────────────────
+# ─── Página em português: impede o tradutor do Chrome de "traduzir" e duplicar textos ──
 stc.html("""
 <script>
-const GRADS = [
-  ['FATURAMENTO BRUTO',  'linear-gradient(135deg,#2E7D32,#1B5E20)'],
-  ['RECEITA LÍQ',        'linear-gradient(135deg,#1565C0,#0D47A1)'],
-  ['TICKET MÉDIO',       'linear-gradient(135deg,#E65100,#BF360C)'],
-  ['TOTAL HECTARES',     'linear-gradient(135deg,#6A1B9A,#4A148C)'],
-  ['CLIENTES ATIVOS',    'linear-gradient(135deg,#00838F,#006064)'],
-  ['CONCENTRAÇÃO',       'linear-gradient(135deg,#C62828,#B71C1C)'],
-  ['📈',                 'linear-gradient(135deg,#004D40,#00695C)'],
-];
-function applyKPI() {
-  try {
-    const doc = window.parent.document;
-    doc.querySelectorAll('button').forEach(btn => {
-      if (btn.getAttribute('role') === 'tab') return;
-      const txt = (btn.innerText || '').trim().toUpperCase();
-      for (const [prefix, grad] of GRADS) {
-        if (txt.startsWith(prefix)) {
-          btn.style.background    = grad;
-          btn.style.color         = 'white';
-          btn.style.border        = 'none';
-          btn.style.borderRadius  = '12px';
-          btn.style.minHeight     = '85px';
-          btn.style.fontWeight    = '700';
-          btn.style.fontSize      = '0.88rem';
-          btn.style.whiteSpace    = 'pre-line';
-          btn.style.lineHeight    = '1.6';
-          btn.style.boxShadow     = '0 4px 12px rgba(0,0,0,0.22)';
-          btn.style.transition    = 'all 0.15s ease';
-          btn.style.padding       = '10px 8px';
-          break;
-        }
-      }
-    });
-  } catch(e) {}
-}
-applyKPI();
-new MutationObserver(() => setTimeout(applyKPI, 80))
-  .observe(document.documentElement, {childList:true, subtree:true});
+try {
+  const html = window.parent.document.documentElement;
+  html.setAttribute('lang', 'pt-BR');
+  html.setAttribute('translate', 'no');
+  html.classList.add('notranslate');
+} catch (e) {}
 </script>
 """, height=0)
 
@@ -1266,33 +1246,25 @@ def _dlg_rpha():
 
 
 # ─── KPI Cards (botões que abrem modal) ──────────────────────────
-c1,c2,c3,c4,c5,c6 = st.columns(6)
-with c1:
-    if st.button(f"FATURAMENTO BRUTO\n{fmt_brl(fat_total)}", key="kb_fat", use_container_width=True):
-        _dlg_fat()
-with c2:
-    if st.button(f"RECEITA LÍQUIDA\n{fmt_brl(liq_total)}", key="kb_liq", use_container_width=True):
-        _dlg_liq()
-with c3:
-    if st.button(f"TICKET MÉDIO/HA\n{fmt_brl(ticket_medio)}\n{len(vendas_ha)} vendas c/ ha",
-                 key="kb_tkt", use_container_width=True):
-        _dlg_tkt()
-with c4:
-    if st.button(f"TOTAL HECTARES\n{fmt_num(total_ha,1)} ha\n{fmt_brl(rec_ha)}/ha",
-                 key="kb_ha", use_container_width=True):
-        _dlg_ha()
-with c5:
-    if st.button(f"CLIENTES ATIVOS\n{fmt_num(total_cli)}\n{num_vendas} vendas",
-                 key="kb_cli", use_container_width=True):
-        _dlg_cli()
-with c6:
-    _lbl_conc = "⚠️ Risco alto" if conc5_pct > 60 else "✅ Saudável"
-    if st.button(f"CONCENTRAÇÃO TOP 5\n{conc5_pct:.1f}%\n{_lbl_conc}",
-                 key="kb_conc", use_container_width=True):
-        _dlg_conc()
+_conc_chip = (f'<span class="chip alerta">Risco alto</span>' if conc5_pct > 60
+              else f'<span class="chip ok">Saudável</span>')
+_cards = [
+    ("Faturamento bruto", fmt_brl(fat_total), "Soma das vendas no período", "kb_fat", _dlg_fat, "destaque"),
+    ("Receita líquida", fmt_brl(liq_total),
+     f"{(liq_total/fat_total*100 if fat_total else 0):.1f}% do bruto".replace(".", ","), "kb_liq", _dlg_liq, ""),
+    ("Ticket médio / ha", fmt_brl(ticket_medio), f"{fmt_num(len(vendas_ha))} vendas com hectares", "kb_tkt", _dlg_tkt, ""),
+    ("Hectares", f"{fmt_num(total_ha, 1)} ha", f"{fmt_brl(rec_ha)} por ha", "kb_ha", _dlg_ha, ""),
+    ("Clientes ativos", fmt_num(total_cli), f"{fmt_num(num_vendas)} vendas", "kb_cli", _dlg_cli, ""),
+    ("Concentração top 5", f"{conc5_pct:.1f}%".replace(".", ","), _conc_chip, "kb_conc", _dlg_conc, ""),
+]
+for _col, (_lbl, _val, _sub, _key, _dlg, _cls) in zip(st.columns(6), _cards):
+    with _col:
+        st.markdown(kpi(_lbl, _val, _cls, _sub), unsafe_allow_html=True)
+        if st.button("Ver detalhes ›", key=_key, type="tertiary"):
+            _dlg()
 
 # ─── Botão R$/ha por Cliente/Ano ─────────────────────────────────
-if st.button("📈 Ticket Médio R$/ha por Cliente e Safra", key="kb_rpha", use_container_width=True):
+if st.button("📈 Ticket médio R$/ha por cliente e safra", key="kb_rpha", use_container_width=True):
     _dlg_rpha()
 
 # ─── Alerta de concentração ──────────────────────────────────────
