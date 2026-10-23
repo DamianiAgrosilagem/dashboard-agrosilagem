@@ -231,25 +231,30 @@ st.markdown("""
         border-color: #1B5E20 !important;
     }
 
-    /* KPI cards: base branca, verde só como acento */
-    .kpi-card {
-        background: #FFFFFF; border: 1px solid #E3E8E0; border-radius: 12px;
-        padding: 14px 16px 12px; color: #1F2A1C; min-height: 112px;
-        display: flex; flex-direction: column; gap: 4px;
-        box-shadow: 0 1px 3px rgba(27,94,32,0.06);
+    /* KPI cards: o próprio botão é o card (clicável), cor sólida, número sempre inteiro */
+    [class*="st-key-kb_"]:not(.st-key-kb_rpha) button {
+        border: none !important; border-radius: 12px !important; color: #FFFFFF !important;
+        min-height: 104px; height: 100%; padding: 12px 10px !important; container-type: inline-size;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.12); transition: filter .15s ease, transform .15s ease;
     }
-    .kpi-card .kpi-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .06em;
-                           color: #5E6658; font-weight: 600; }
-    .kpi-card .kpi-value { font-size: 1.45rem; font-weight: 700; color: #1F2A1C; line-height: 1.2;
-                           font-variant-numeric: tabular-nums; white-space: nowrap;
-                           overflow: hidden; text-overflow: ellipsis; }
-    .kpi-card .kpi-delta { font-size: 0.8rem; color: #5E6658; font-variant-numeric: tabular-nums; }
-    .kpi-card.destaque { border-top: 3px solid #3F7A34; }
-    .kpi-card .chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .75rem; font-weight: 600; }
-    .kpi-card .chip.ok { background: #E3EEDD; color: #2F6A28; }
-    .kpi-card .chip.alerta { background: #FBE6E3; color: #A8322A; }
-    /* "Ver detalhes" sob cada card */
-    [class*="st-key-kb_"]:not(.st-key-kb_rpha) button { justify-content: flex-start; padding-left: 4px; color: #3F7A34 !important; font-size: .82rem; }
+    [class*="st-key-kb_"]:not(.st-key-kb_rpha) button:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    [class*="st-key-kb_"]:not(.st-key-kb_rpha) button:focus-visible { outline: 3px solid #A5D6A7 !important; outline-offset: 2px; }
+    [class*="st-key-kb_"]:not(.st-key-kb_rpha) button p {
+        white-space: pre-line; line-height: 1.45; font-size: .74rem; font-weight: 600;
+        letter-spacing: .03em; text-transform: uppercase; margin: 0; color: #FFFFFF;
+    }
+    /* valor: tamanho se ajusta à largura e quebra linha em vez de cortar */
+    [class*="st-key-kb_"]:not(.st-key-kb_rpha) button p strong {
+        display: block; margin: 4px 0; text-transform: none; letter-spacing: 0; font-weight: 700;
+        font-size: min(1.6rem, 10.5cqi); line-height: 1.2; white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+    .st-key-kb_fat button  { background: #2E6B2A !important; }
+    .st-key-kb_liq button  { background: #1F5C6B !important; }
+    .st-key-kb_tkt button  { background: #A0581E !important; }
+    .st-key-kb_ha button   { background: #5B6B23 !important; }
+    .st-key-kb_cli button  { background: #3D4F7A !important; }
+    .st-key-kb_conc button { background: #2E7D4F !important; }
 
     .alerta-concentracao {
         background: #FFF3E0; border-left: 5px solid #E65100;
@@ -889,11 +894,6 @@ if modo_escuro:
         .stTabs [data-baseweb="tab"] { color: #81C784 !important; }
         [data-testid="stMetric"] { color: #E0E0E0 !important; }
         div[data-testid="stDataFrame"] { background: #1E1E1E !important; }
-        .kpi-card { background: #1C2118 !important; border-color: #2E3529 !important; box-shadow: none !important; }
-        .kpi-card .kpi-value { color: #E9ECE3 !important; }
-        .kpi-card .kpi-label, .kpi-card .kpi-delta { color: #A3AA9B !important; }
-        .kpi-card.destaque { border-top-color: #78B866 !important; }
-        [class*="st-key-kb_"]:not(.st-key-kb_rpha) button { color: #8CC97A !important; }
     </style>""", unsafe_allow_html=True)
 
 
@@ -1246,22 +1246,24 @@ def _dlg_rpha():
 
 
 # ─── KPI Cards (botões que abrem modal) ──────────────────────────
-_conc_chip = (f'<span class="chip alerta">Risco alto</span>' if conc5_pct > 60
-              else f'<span class="chip ok">Saudável</span>')
+# Cada card é um botão: rótulo, **valor** (destacado via CSS) e detalhe, um por linha.
 _cards = [
-    ("Faturamento bruto", fmt_brl(fat_total), "Soma das vendas no período", "kb_fat", _dlg_fat, "destaque"),
+    ("Faturamento bruto", fmt_brl(fat_total), f"{fmt_num(num_vendas)} vendas", "kb_fat", _dlg_fat),
     ("Receita líquida", fmt_brl(liq_total),
-     f"{(liq_total/fat_total*100 if fat_total else 0):.1f}% do bruto".replace(".", ","), "kb_liq", _dlg_liq, ""),
-    ("Ticket médio / ha", fmt_brl(ticket_medio), f"{fmt_num(len(vendas_ha))} vendas com hectares", "kb_tkt", _dlg_tkt, ""),
-    ("Hectares", f"{fmt_num(total_ha, 1)} ha", f"{fmt_brl(rec_ha)} por ha", "kb_ha", _dlg_ha, ""),
-    ("Clientes ativos", fmt_num(total_cli), f"{fmt_num(num_vendas)} vendas", "kb_cli", _dlg_cli, ""),
-    ("Concentração top 5", f"{conc5_pct:.1f}%".replace(".", ","), _conc_chip, "kb_conc", _dlg_conc, ""),
+     f"{(liq_total/fat_total*100 if fat_total else 0):.1f}% do bruto".replace(".", ","), "kb_liq", _dlg_liq),
+    ("Ticket médio / ha", fmt_brl(ticket_medio), f"{fmt_num(len(vendas_ha))} vendas c/ ha", "kb_tkt", _dlg_tkt),
+    ("Total hectares", f"{fmt_num(total_ha, 1)} ha", f"{fmt_brl(rec_ha)}/ha", "kb_ha", _dlg_ha),
+    ("Clientes ativos", fmt_num(total_cli), f"{fmt_num(num_vendas)} vendas", "kb_cli", _dlg_cli),
+    ("Concentração top 5", f"{conc5_pct:.1f}%".replace(".", ","),
+     "Risco alto" if conc5_pct > 60 else "Saudável", "kb_conc", _dlg_conc),
 ]
-for _col, (_lbl, _val, _sub, _key, _dlg, _cls) in zip(st.columns(6), _cards):
+for _col, (_lbl, _val, _sub, _key, _dlg) in zip(st.columns(3) + st.columns(3), _cards):
     with _col:
-        st.markdown(kpi(_lbl, _val, _cls, _sub), unsafe_allow_html=True)
-        if st.button("Ver detalhes ›", key=_key, type="tertiary"):
+        # espaço inseparável: "R$" e o número nunca ficam em linhas diferentes
+        if st.button(f"{_lbl}\n**{_val.replace(' ', chr(160))}**\n{_sub}", key=_key, use_container_width=True):
             _dlg()
+if conc5_pct > 60:
+    st.markdown('<style>.st-key-kb_conc button { background: #A8322A !important; }</style>', unsafe_allow_html=True)
 
 # ─── Botão R$/ha por Cliente/Ano ─────────────────────────────────
 if st.button("📈 Ticket médio R$/ha por cliente e safra", key="kb_rpha", use_container_width=True):
